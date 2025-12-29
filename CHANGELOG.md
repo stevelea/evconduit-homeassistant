@@ -10,8 +10,8 @@ All notable changes to this project will be documented in this file. Follows [Se
 
 #### Major Features
 
-* Initial integration with Home Assistant via custom component `evlinkha`.
-* Support for vehicle data retrieval (status, location, charge state, odometer, etc.) via EVLinkHA API.
+* Initial integration with Home Assistant via custom component `evconduit`.
+* Support for vehicle data retrieval (status, location, charge state, odometer, etc.) via EVConduit API.
 * Configuration flow for API key, environment (prod/sandbox), and vehicle selection.
 * Sensor platform setup for all major vehicle fields (battery, charging, range, etc.).
 * Push webhook handler for real-time updates from backend to HA entities.

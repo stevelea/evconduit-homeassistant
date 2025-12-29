@@ -1,13 +1,13 @@
-# Uppgifter för EVLinkHA-komponenten
+# Uppgifter för EVConduit-komponenten
 
-Denna mapp innehåller filer för att hantera arbetsuppgifter relaterade till EVLinkHA Home Assistant-komponenten.
+Denna mapp innehåller filer för att hantera arbetsuppgifter relaterade till EVConduit Home Assistant-komponenten.
 
 ## Exempel på uppgiftsfil:
 
 ```markdown
 ### Uppgift: Implementera stöd för ny fordonstyp
 
-**Beskrivning:** Lägg till logik i `api.py` och `sensor.py` för att hantera en ny fordonstyp som EVLinkHA-tjänsten nu stöder. Detta inkluderar att parsa nya datafält och skapa relevanta sensorer.
+**Beskrivning:** Lägg till logik i `api.py` och `sensor.py` för att hantera en ny fordonstyp som EVConduit-tjänsten nu stöder. Detta inkluderar att parsa nya datafält och skapa relevanta sensorer.
 
 **Prioritet:** Hög
 
