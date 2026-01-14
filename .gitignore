@@ -4,9 +4,9 @@
 # ... but "unignore" directories so that we can whitelist a specific folder:
 !*/
 
-# Whitelist the evlinkha component
-!custom_components/evlinkha/
-!custom_components/evlinkha/**
+# Whitelist the evconduit component
+!custom_components/evconduit/
+!custom_components/evconduit/**
 !.github/**
 !hacs.json
 !CHANGELOG.md

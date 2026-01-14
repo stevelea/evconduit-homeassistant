@@ -1,0 +1,19 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Anslut till EVConduit",
+        "description": "Ange din API-nyckel och välj miljö.",
+        "data": {
+          "api_key": "API-nyckel",
+          "environment": "Miljö",
+          "vehicle_id": "Fordon-ID"
+        }
+      }
+    },
+    "options": {
+      "prod": "Produktion",
+      "sandbox": "Sandbox"
+    }
+  }
+}

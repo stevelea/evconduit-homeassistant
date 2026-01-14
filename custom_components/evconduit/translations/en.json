@@ -1,0 +1,19 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to EVConduit",
+        "description": "Enter your API key, select environment and vehicle.",
+        "data": {
+          "api_key": "API Key",
+          "environment": "Environment",
+          "vehicle_id": "Vehicle ID"
+        }
+      }
+    },
+    "options": {
+      "prod": "Production",
+      "sandbox": "Sandbox"
+    }
+  }
+}

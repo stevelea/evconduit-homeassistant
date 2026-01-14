@@ -1,0 +1,18 @@
+{
+  "domain": "evconduit",
+  "name": "EVConduit",
+  "after_dependencies": [
+        "http"
+  ],
+  "codeowners": [
+        "@stevelea"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/stevelea/evconduit-homeassistant",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/stevelea/evconduit-homeassistant/issues",
+  "requirements": [],
+  "version": "2025.7.0"
+}
