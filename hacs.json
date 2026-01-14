@@ -1,8 +1,6 @@
 {
   "name": "EVConduit",
   "content_in_root": false,
-  "country": "all",
   "homeassistant": "2025.5.0",
-  "render_readme": true,
-  "filename": "custom_components/evconduit/__init__.py"
+  "render_readme": true
 }
