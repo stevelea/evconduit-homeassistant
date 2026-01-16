@@ -1,0 +1,14 @@
+set_charging:
+  name: Set Charging
+  description: Start or stop charging the vehicle.
+  fields:
+    action:
+      name: Action
+      description: The charging action to perform.
+      required: true
+      example: "START"
+      selector:
+        select:
+          options:
+            - "START"
+            - "STOP"
