@@ -33,7 +33,17 @@ async def _handle_push_webhook(hass, webhook_id: str, request) -> web.Response:
         if not vehicle_update:
             _LOGGER.warning("No 'vehicle' field in webhook payload, ignoring.")
             return web.Response(status=400, text="Missing vehicle data")
-        
+
+        # Log incoming chargeState for debugging
+        incoming_charge_state = vehicle_update.get("chargeState", {})
+        old_charge_state = old.get("chargeState", {})
+        _LOGGER.info(
+            "Webhook chargeState - incoming chargeRate: %s, old chargeRate: %s, incoming batteryLevel: %s",
+            incoming_charge_state.get("chargeRate"),
+            old_charge_state.get("chargeRate"),
+            incoming_charge_state.get("batteryLevel"),
+        )
+
         # Start with a copy of the old values
         merged = old.copy()
         for key, val in vehicle_update.items():
@@ -43,6 +53,14 @@ async def _handle_push_webhook(hass, webhook_id: str, request) -> web.Response:
                 merged[key] = nested
             else:
                 merged[key] = val
+
+        # Log merged chargeState for debugging
+        merged_charge_state = merged.get("chargeState", {})
+        _LOGGER.info(
+            "Merged chargeState - chargeRate: %s, batteryLevel: %s",
+            merged_charge_state.get("chargeRate"),
+            merged_charge_state.get("batteryLevel"),
+        )
 
         # Submit the merged data
         coord.async_set_updated_data(merged)
