@@ -7,7 +7,16 @@
         "data": {
           "api_key": "API-nyckel",
           "environment": "Miljö",
-          "vehicle_id": "Fordon-ID"
+          "vehicle_id": "Fordon-ID",
+          "abrp_token": "ABRP-token (valfritt)"
+        }
+      },
+      "reconfigure": {
+        "data": {
+          "api_key": "API-nyckel",
+          "environment": "Miljö",
+          "vehicle_id": "Fordon-ID",
+          "abrp_token": "ABRP-token (valfritt)"
         }
       }
     },

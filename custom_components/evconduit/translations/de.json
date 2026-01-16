@@ -7,7 +7,16 @@
         "data": {
           "api_key": "API-Schlüssel",
           "environment": "Umgebung",
-          "vehicle_id": "Fahrzeug-ID"
+          "vehicle_id": "Fahrzeug-ID",
+          "abrp_token": "ABRP-Token (optional)"
+        }
+      },
+      "reconfigure": {
+        "data": {
+          "api_key": "API-Schlüssel",
+          "environment": "Umgebung",
+          "vehicle_id": "Fahrzeug-ID",
+          "abrp_token": "ABRP-Token (optional)"
         }
       }
     },

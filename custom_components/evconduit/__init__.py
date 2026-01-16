@@ -11,9 +11,10 @@ from homeassistant.components.webhook import async_register, async_unregister
 from .const import (
     DOMAIN, ENVIRONMENTS,
     CONF_API_KEY, CONF_ENVIRONMENT, CONF_VEHICLE_ID, CONF_UPDATE_INTERVAL,
-    DEFAULT_UPDATE_INTERVAL,
+    CONF_ABRP_TOKEN, DEFAULT_UPDATE_INTERVAL,
 )
 from .api import EVConduitClient
+from .abrp import ABRPClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -102,6 +103,24 @@ async def async_setup_entry(hass, entry) -> bool:
         hass.data[DOMAIN][f"{entry.entry_id}_vehicle"] = vehicle_coord
         _LOGGER.debug("Coordinators stored in hass.data for entry %s", entry.entry_id)
 
+        # 2b) Set up ABRP integration if token is configured
+        abrp_token = entry.data.get(CONF_ABRP_TOKEN, "")
+        if abrp_token:
+            from homeassistant.helpers.aiohttp_client import async_get_clientsession
+            session = async_get_clientsession(hass)
+            abrp_client = ABRPClient(session, abrp_token)
+            hass.data[DOMAIN][f"{entry.entry_id}_abrp"] = abrp_client
+            _LOGGER.info("ABRP integration enabled for entry %s", entry.entry_id)
+
+            # Add listener to send telemetry on vehicle updates
+            async def _send_abrp_update():
+                """Send vehicle telemetry to ABRP when data updates."""
+                if vehicle_coord.data:
+                    await abrp_client.async_send_telemetry(vehicle_coord.data)
+
+            vehicle_coord.async_add_listener(_send_abrp_update)
+            _LOGGER.debug("ABRP update listener added to vehicle coordinator")
+
         # 3) Register charging service
         schema = vol.Schema({vol.Required("action"): vol.In(["START", "STOP"])})
         async def _handle_charging(call):
@@ -155,6 +174,7 @@ async def async_unload_entry(hass, entry) -> bool:
     _LOGGER.debug("Service and webhook unregistered")
     hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     hass.data.get(DOMAIN, {}).pop(f"{entry.entry_id}_vehicle", None)
+    hass.data.get(DOMAIN, {}).pop(f"{entry.entry_id}_abrp", None)
     return unload_ok
 
 # Lägg till denna!

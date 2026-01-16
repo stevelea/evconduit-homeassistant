@@ -5,7 +5,10 @@ CONF_API_KEY     = "api_key"
 CONF_ENVIRONMENT = "environment"
 CONF_VEHICLE_ID  = "vehicle_id"
 CONF_UPDATE_INTERVAL = "update_interval"
+CONF_ABRP_TOKEN = "abrp_token"
 DEFAULT_UPDATE_INTERVAL = 6
+
+ABRP_API_URL = "https://api.iternio.com/1/tlm/send"
 
 WEBHOOK_ID = f"{DOMAIN}_push_webhook"
 

@@ -51,9 +51,11 @@ The integration supports Xpeng and other vehicles connected through Enode.
 When adding the integration in Home Assistant (Settings > Devices & Services > Add Integration > EVConduit):
 
 - Enter your **API key**
-- Enter your **vehicle_id**
+- Select your **environment** (Production or Sandbox)
+- Select your **vehicle** from the list
+- Optionally enter your **ABRP token** (see below)
 
-You will find both on [evconduit.com](https://evconduit.com) as described above.
+You will find your API key on [evconduit.com](https://evconduit.com) as described above.
 
 ---
 
@@ -61,7 +63,31 @@ You will find both on [evconduit.com](https://evconduit.com) as described above.
 
 - Automatically fetches vehicle data and charging status
 - Supports multiple car brands through Enode
+- Real-time updates via webhook
+- Optional ABRP (A Better Route Planner) integration
 - Designed for security, simplicity, and reliability
+
+---
+
+## ABRP Integration (Optional)
+
+You can optionally send vehicle telemetry to [A Better Route Planner (ABRP)](https://abetterrouteplanner.com) for live data during route planning.
+
+**To enable ABRP integration:**
+
+1. Open the ABRP app or website
+2. Go to **Settings → Live Data**
+3. Select **Generic** as the data source
+4. Copy the token shown
+5. Enter this token in the EVConduit integration setup (or reconfigure an existing setup)
+
+**Data sent to ABRP:**
+- Battery level (state of charge)
+- Location (latitude/longitude)
+- Charging status
+- Charge rate (power)
+
+The integration sends updates to ABRP whenever vehicle data is refreshed (via polling or webhook push).
 
 ---
 

@@ -7,7 +7,16 @@
         "data": {
           "api_key": "API Key",
           "environment": "Environment",
-          "vehicle_id": "Vehicle ID"
+          "vehicle_id": "Vehicle ID",
+          "abrp_token": "ABRP Token (optional)"
+        }
+      },
+      "reconfigure": {
+        "data": {
+          "api_key": "API Key",
+          "environment": "Environment",
+          "vehicle_id": "Vehicle ID",
+          "abrp_token": "ABRP Token (optional)"
         }
       }
     },

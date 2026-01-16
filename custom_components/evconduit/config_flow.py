@@ -1,7 +1,7 @@
 from homeassistant import config_entries
 import voluptuous as vol
 import logging
-from .const import DOMAIN, CONF_API_KEY, CONF_VEHICLE_ID, CONF_UPDATE_INTERVAL, CONF_ENVIRONMENT, ENVIRONMENTS
+from .const import DOMAIN, CONF_API_KEY, CONF_VEHICLE_ID, CONF_UPDATE_INTERVAL, CONF_ENVIRONMENT, CONF_ABRP_TOKEN, ENVIRONMENTS
 
 from .api import EVConduitClient
 
@@ -34,7 +34,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 else:
                     _LOGGER.info("[ConfigFlow] API key validated successfully, proceeding to vehicle_id step")
                     self.context["api_key"] = api_key
-                    self.context["environment"] = environment    # <-- NY
+                    self.context["environment"] = environment
+                    self.context["abrp_token"] = user_input.get(CONF_ABRP_TOKEN, "")
                     return await self.async_step_vehicle()
             except Exception as e:
                 _LOGGER.exception(f"[ConfigFlow] Exception during API key validation: {e}")
@@ -45,6 +46,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Required(CONF_API_KEY): str,
                 vol.Required(CONF_ENVIRONMENT, default="prod"): vol.In(["prod", "sandbox"]),
+                vol.Optional(CONF_ABRP_TOKEN): str,
             }),
             errors=errors
         )
@@ -91,6 +93,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_ENVIRONMENT: environment,
                 CONF_VEHICLE_ID: vehicle_id,
             }
+            # Include ABRP token if provided
+            abrp_token = self.context.get("abrp_token", "")
+            if abrp_token:
+                entry_data[CONF_ABRP_TOKEN] = abrp_token
             _LOGGER.info("[ConfigFlow] Creating config entry with API key, environment and vehicle_id")
             return self.async_create_entry(title="EVConduit", data=entry_data)
         
@@ -116,8 +122,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="reconfigure",
             data_schema=vol.Schema({
                 vol.Required(CONF_API_KEY, default=data.get(CONF_API_KEY, "")): str,
-                vol.Required(CONF_ENVIRONMENT, default=data.get(CONF_ENVIRONMENT, "prod")): vol.In(["prod", "sandbox"]), # <-- NY
+                vol.Required(CONF_ENVIRONMENT, default=data.get(CONF_ENVIRONMENT, "prod")): vol.In(["prod", "sandbox"]),
                 vol.Required(CONF_VEHICLE_ID, default=data.get(CONF_VEHICLE_ID, "")): str,
+                vol.Optional(CONF_ABRP_TOKEN, default=data.get(CONF_ABRP_TOKEN, "")): str,
             }),
         )
 
