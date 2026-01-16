@@ -172,3 +172,60 @@ class EVConduitClient:
             _LOGGER.exception(f"[EVConduitClient] Exception fetching vehicles: {err}")
         return []
 
+    async def async_register_webhook(self, webhook_id: str, external_url: str) -> bool:
+        """
+        Register the Home Assistant webhook URL with EVConduit.
+        This enables push notifications for real-time vehicle updates.
+        Returns True if successful, False otherwise.
+        """
+        url = f"{self.base_url}/api/ha/webhook/register"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "webhook_id": webhook_id,
+            "external_url": external_url.rstrip("/"),
+        }
+        _LOGGER.debug(f"[EVConduitClient] POST webhook register: {url}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload, headers=headers, timeout=15) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        _LOGGER.info(f"[EVConduitClient] Webhook registered successfully: {data}")
+                        return True
+                    elif resp.status == 403:
+                        text = await resp.text()
+                        _LOGGER.warning(f"[EVConduitClient] Webhook registration denied (Pro tier required): {text}")
+                        return False
+                    else:
+                        text = await resp.text()
+                        _LOGGER.error(f"[EVConduitClient] Webhook registration failed HTTP {resp.status}: {text}")
+                        return False
+        except Exception as err:
+            _LOGGER.exception(f"[EVConduitClient] Exception registering webhook: {err}")
+        return False
+
+    async def async_unregister_webhook(self) -> bool:
+        """
+        Unregister the Home Assistant webhook URL from EVConduit.
+        Returns True if successful, False otherwise.
+        """
+        url = f"{self.base_url}/api/ha/webhook/register"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        _LOGGER.debug(f"[EVConduitClient] DELETE webhook unregister: {url}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(url, headers=headers, timeout=15) as resp:
+                    if resp.status == 200:
+                        _LOGGER.info("[EVConduitClient] Webhook unregistered successfully")
+                        return True
+                    else:
+                        text = await resp.text()
+                        _LOGGER.error(f"[EVConduitClient] Webhook unregister failed HTTP {resp.status}: {text}")
+                        return False
+        except Exception as err:
+            _LOGGER.exception(f"[EVConduitClient] Exception unregistering webhook: {err}")
+        return False
+

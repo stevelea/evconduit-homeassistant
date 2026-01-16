@@ -154,7 +154,21 @@ async def async_setup_entry(hass, entry) -> bool:
         )
         _LOGGER.debug("Webhook registered with id=%s", webhook_id)
 
-        # 5) Forward to the sensor and device_tracker platforms
+        # 5) Register webhook with EVConduit backend (for Pro users)
+        external_url = hass.config.external_url
+        if external_url:
+            registered = await client.async_register_webhook(webhook_id, external_url)
+            if registered:
+                _LOGGER.info("Webhook registered with EVConduit backend for push notifications")
+            else:
+                _LOGGER.warning("Failed to register webhook with EVConduit (Pro tier may be required)")
+        else:
+            _LOGGER.warning("No external_url configured in Home Assistant, skipping webhook registration")
+
+        # Store client for unload
+        hass.data[DOMAIN][f"{entry.entry_id}_client"] = client
+
+        # 6) Forward to the sensor and device_tracker platforms
         await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "device_tracker"])
         _LOGGER.debug("Forwarded entry to sensor platform")
 
@@ -172,9 +186,20 @@ async def async_unload_entry(hass, entry) -> bool:
     hass.services.async_remove(DOMAIN, "set_charging")
     async_unregister(hass, entry.entry_id)
     _LOGGER.debug("Service and webhook unregistered")
+
+    # Unregister webhook from EVConduit backend
+    client = hass.data.get(DOMAIN, {}).get(f"{entry.entry_id}_client")
+    if client:
+        try:
+            await client.async_unregister_webhook()
+            _LOGGER.info("Webhook unregistered from EVConduit backend")
+        except Exception as e:
+            _LOGGER.warning("Failed to unregister webhook from EVConduit: %s", e)
+
     hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     hass.data.get(DOMAIN, {}).pop(f"{entry.entry_id}_vehicle", None)
     hass.data.get(DOMAIN, {}).pop(f"{entry.entry_id}_abrp", None)
+    hass.data.get(DOMAIN, {}).pop(f"{entry.entry_id}_client", None)
     return unload_ok
 
 # Lägg till denna!
