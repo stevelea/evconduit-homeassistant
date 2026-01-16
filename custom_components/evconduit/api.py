@@ -95,38 +95,19 @@ class EVConduitClient:
                                 },
                             )
                         )
-                        return None
+                        raise UpdateFailed(f"400 Bad Request: {text}")
 
-                    # Other errors
+                    # Other errors - raise UpdateFailed to preserve previous data
                     text = await resp.text()
                     _LOGGER.error(f"[EVConduitClient] Vehicle status fetch failed HTTP {resp.status}: {text}")
-                    self.hass.async_create_task(
-                        self.hass.services.async_call(
-                            "persistent_notification",
-                            "create",
-                            {
-                                "title": "EVConduit Vehicle Status Error",
-                                "message": (
-                                    f"Unexpected error {resp.status} when trying to fetch vehicle status."
-                                ),
-                            },
-                        )
-                    )
-                    return None
+                    raise UpdateFailed(f"HTTP {resp.status}: {text}")
 
+        except UpdateFailed:
+            # Re-raise UpdateFailed so coordinator preserves previous data
+            raise
         except Exception as err:
             _LOGGER.exception(f"[EVConduitClient] Exception fetching vehicle status: {err}")
-            self.hass.async_create_task(
-                self.hass.services.async_call(
-                    "persistent_notification",
-                    "create",
-                    {
-                        "title": "EVConduit Vehicle Status Exception",
-                        "message": str(err),
-                    },
-                )
-            )
-            return None
+            raise UpdateFailed(f"Exception: {err}")
 
     async def async_set_charging(self, action: str) -> dict | None:
         url = f"{self.base_url}/api/charging/{self.vehicle_id}"
