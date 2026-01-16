@@ -154,8 +154,8 @@ async def async_setup_entry(hass, entry) -> bool:
         )
         _LOGGER.debug("Webhook registered with id=%s", webhook_id)
 
-        # 5) Forward to the sensor platform
-        await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+        # 5) Forward to the sensor and device_tracker platforms
+        await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "device_tracker"])
         _LOGGER.debug("Forwarded entry to sensor platform")
 
         _LOGGER.info("---- [EVConduit] async_setup_entry finished for %s ----", entry.entry_id)
@@ -168,7 +168,7 @@ async def async_setup_entry(hass, entry) -> bool:
 async def async_unload_entry(hass, entry) -> bool:
     """Unload EVConduit: deregister webhook & service, remove coordinators."""
     _LOGGER.debug("Unloading EVConduit entry %s", entry.entry_id)
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor", "device_tracker"])
     hass.services.async_remove(DOMAIN, "set_charging")
     async_unregister(hass, entry.entry_id)
     _LOGGER.debug("Service and webhook unregistered")
