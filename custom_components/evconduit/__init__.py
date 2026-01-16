@@ -34,6 +34,19 @@ async def _handle_push_webhook(hass, webhook_id: str, request) -> web.Response:
             _LOGGER.warning("No 'vehicle' field in webhook payload, ignoring.")
             return web.Response(status=400, text="Missing vehicle data")
 
+        # Get the configured vehicle_id from the entry
+        entry = hass.config_entries.async_get_entry(webhook_id)
+        if entry:
+            configured_vehicle_id = entry.data.get(CONF_VEHICLE_ID)
+            incoming_vehicle_id = vehicle_update.get("id")
+            if configured_vehicle_id and incoming_vehicle_id and configured_vehicle_id != incoming_vehicle_id:
+                _LOGGER.debug(
+                    "Ignoring webhook for different vehicle: configured=%s, incoming=%s",
+                    configured_vehicle_id,
+                    incoming_vehicle_id,
+                )
+                return web.Response(status=200, text="OK (ignored - different vehicle)")
+
         # Log incoming chargeState for debugging
         incoming_charge_state = vehicle_update.get("chargeState", {})
         old_charge_state = old.get("chargeState", {})
