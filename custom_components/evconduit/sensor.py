@@ -3,7 +3,9 @@
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 from .const import DOMAIN, ICONS, USER_FIELDS, VEHICLE_FIELDS, WEBHOOK_FIELDS
+from datetime import datetime
 import logging
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,6 +54,15 @@ async def async_setup_entry(hass, entry, async_add_entities):
         EVConduitLocation(
             vehicle_coordinator,  # based on the status coordinator
             entry
+        )
+    )
+
+    # Add Last Seen Local sensor (converts UTC to HA's local timezone)
+    entities.append(
+        EVConduitLastSeenLocalSensor(
+            vehicle_coordinator,
+            entry,
+            hass
         )
     )
 
@@ -236,3 +247,70 @@ class EVConduitWebhookIdSensor(CoordinatorEntity, SensorEntity):
     def unique_id(self):
         # Fallback to entry_id if data is missing
         return f"{DOMAIN}-{self._entry.entry_id}-{self._field}"
+
+
+class EVConduitLastSeenLocalSensor(CoordinatorEntity, SensorEntity):
+    """Sensor that displays Last Seen time in Home Assistant's local timezone."""
+
+    def __init__(self, coordinator, entry, hass):
+        super().__init__(coordinator)
+        self._entry = entry
+        self._hass = hass
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return {
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "name": "EVConduit",
+            "manufacturer": "Roger Aspelin",
+            "model": "EVConduit Integration",
+        }
+
+    @property
+    def name(self):
+        return "EVConduit Last Seen Local"
+
+    @property
+    def state(self):
+        """Convert UTC lastSeen to local timezone."""
+        data = self.coordinator.data or {}
+        last_seen_utc = data.get("lastSeen")
+
+        if not last_seen_utc:
+            return None
+
+        try:
+            # Parse the ISO 8601 UTC timestamp
+            if last_seen_utc.endswith("Z"):
+                last_seen_utc = last_seen_utc[:-1] + "+00:00"
+
+            utc_dt = datetime.fromisoformat(last_seen_utc)
+
+            # Convert to Home Assistant's local timezone
+            local_dt = dt_util.as_local(utc_dt)
+
+            # Format as human-readable string
+            return local_dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception as e:
+            _LOGGER.error("[EVConduit] Error converting lastSeen to local time: %s", e)
+            return last_seen_utc
+
+    @property
+    def extra_state_attributes(self):
+        """Include UTC time and timezone info as attributes."""
+        data = self.coordinator.data or {}
+        last_seen_utc = data.get("lastSeen")
+
+        attrs = {
+            "utc_time": last_seen_utc,
+            "timezone": str(dt_util.DEFAULT_TIME_ZONE),
+        }
+        return attrs
+
+    @property
+    def icon(self):
+        return ICONS.get("lastSeenLocal")
+
+    @property
+    def unique_id(self):
+        return f"{DOMAIN}-{self._entry.entry_id}-vehicle-lastSeenLocal"

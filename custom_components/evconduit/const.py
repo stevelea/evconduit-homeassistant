@@ -32,6 +32,7 @@ ICONS = {
     "chargingState": "mdi:power-socket",
     "vehicleName": "mdi:car",
     "lastSeen": "mdi:clock-outline",
+    "lastSeenLocal": "mdi:clock",
     "isReachable": "mdi:lan-connect",
     "chargeState.batteryCapacity": "mdi:battery-charging-100",
     "chargeState.chargeLimit": "mdi:battery-charging-80",
