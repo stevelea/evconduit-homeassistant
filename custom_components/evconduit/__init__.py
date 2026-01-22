@@ -1,5 +1,6 @@
 # custom_components/evconduit/__init__.py
 
+import asyncio
 import logging
 from datetime import timedelta
 import voluptuous as vol
@@ -11,7 +12,7 @@ from homeassistant.components.webhook import async_register, async_unregister
 from .const import (
     DOMAIN, ENVIRONMENTS,
     CONF_API_KEY, CONF_ENVIRONMENT, CONF_VEHICLE_ID, CONF_UPDATE_INTERVAL,
-    CONF_ABRP_TOKEN, DEFAULT_UPDATE_INTERVAL,
+    CONF_ABRP_TOKEN, CONF_ODOMETER_ENTITY, DEFAULT_UPDATE_INTERVAL,
 )
 from .api import EVConduitClient
 from .abrp import ABRPClient
@@ -152,6 +153,54 @@ async def async_setup_entry(hass, entry) -> bool:
             vehicle_coord.async_add_listener(_send_abrp_update)
             _LOGGER.debug("ABRP update listener added to vehicle coordinator")
 
+        # 2c) Set up auto-odometer update if entity is configured
+        odometer_entity = entry.options.get(CONF_ODOMETER_ENTITY, "")
+        if odometer_entity:
+            _LOGGER.info("Auto-odometer update enabled with entity: %s", odometer_entity)
+            # Track previous charging state to detect charge end
+            prev_charging_state = {"is_charging": None}
+
+            async def _check_charging_ended():
+                """Check if charging just ended and update odometer."""
+                if not vehicle_coord.data:
+                    return
+
+                charge_state = vehicle_coord.data.get("chargeState", {})
+                current_charging = charge_state.get("isCharging", False)
+                was_charging = prev_charging_state["is_charging"]
+
+                # Update previous state
+                prev_charging_state["is_charging"] = current_charging
+
+                # Detect transition from charging to not charging
+                if was_charging is True and current_charging is False:
+                    _LOGGER.info("Charging ended - updating odometer from %s", odometer_entity)
+
+                    # Read odometer value from entity
+                    state = hass.states.get(odometer_entity)
+                    if state is None:
+                        _LOGGER.warning("Odometer entity %s not found", odometer_entity)
+                        return
+
+                    try:
+                        odometer_km = float(state.state)
+                    except (ValueError, TypeError):
+                        _LOGGER.warning("Invalid odometer value from %s: %s", odometer_entity, state.state)
+                        return
+
+                    # Wait a bit for the charging session to be finalized in backend
+                    await asyncio.sleep(30)
+
+                    # Call API to update odometer
+                    result = await client.async_update_odometer(odometer_km)
+                    if result:
+                        _LOGGER.info("Auto-updated odometer to %s km after charge ended", odometer_km)
+                    else:
+                        _LOGGER.warning("Failed to auto-update odometer after charge ended")
+
+            vehicle_coord.async_add_listener(_check_charging_ended)
+            _LOGGER.debug("Auto-odometer update listener added to vehicle coordinator")
+
         # 3) Register charging service
         schema = vol.Schema({vol.Required("action"): vol.In(["START", "STOP"])})
         async def _handle_charging(call):
@@ -173,6 +222,50 @@ async def async_setup_entry(hass, entry) -> bool:
             schema=schema,
         )
         _LOGGER.debug("Service set_charging registered")
+
+        # 3b) Register odometer update service
+        odometer_schema = vol.Schema({
+            vol.Optional("odometer_entity"): str,
+            vol.Optional("odometer_km"): vol.Coerce(float),
+        })
+        async def _handle_odometer(call):
+            odometer_entity = call.data.get("odometer_entity")
+            odometer_km = call.data.get("odometer_km")
+
+            # If entity provided, read the value from it
+            if odometer_entity:
+                state = hass.states.get(odometer_entity)
+                if state is None:
+                    _LOGGER.error("Entity %s not found", odometer_entity)
+                    return
+                try:
+                    odometer_km = float(state.state)
+                    _LOGGER.debug("Read odometer value %s from entity %s", odometer_km, odometer_entity)
+                except (ValueError, TypeError):
+                    _LOGGER.error("Entity %s has invalid state: %s", odometer_entity, state.state)
+                    return
+
+            if odometer_km is None:
+                _LOGGER.error("No odometer value provided (use odometer_entity or odometer_km)")
+                return
+
+            _LOGGER.debug("Service update_odometer called with odometer_km=%s", odometer_km)
+            try:
+                result = await client.async_update_odometer(odometer_km)
+                if result:
+                    _LOGGER.info("Odometer updated successfully to %s km", odometer_km)
+                else:
+                    _LOGGER.warning("Odometer update failed or no session found")
+            except Exception as e:
+                _LOGGER.exception("Error in update_odometer service")
+
+        hass.services.async_register(
+            DOMAIN,
+            "update_odometer",
+            _handle_odometer,
+            schema=odometer_schema,
+        )
+        _LOGGER.debug("Service update_odometer registered")
 
         # 4) Register webhook under /api/webhook/{entry_id}
         webhook_id = entry.entry_id
@@ -215,8 +308,9 @@ async def async_unload_entry(hass, entry) -> bool:
     _LOGGER.debug("Unloading EVConduit entry %s", entry.entry_id)
     unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor", "device_tracker"])
     hass.services.async_remove(DOMAIN, "set_charging")
+    hass.services.async_remove(DOMAIN, "update_odometer")
     async_unregister(hass, entry.entry_id)
-    _LOGGER.debug("Service and webhook unregistered")
+    _LOGGER.debug("Services and webhook unregistered")
 
     # Unregister webhook from EVConduit backend
     client = hass.data.get(DOMAIN, {}).get(f"{entry.entry_id}_client")

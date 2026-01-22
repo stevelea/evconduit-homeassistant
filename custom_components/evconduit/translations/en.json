@@ -24,5 +24,17 @@
       "prod": "Production",
       "sandbox": "Sandbox"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "EVConduit Options",
+        "description": "Configure integration settings.",
+        "data": {
+          "update_interval": "Update interval (minutes)",
+          "odometer_entity": "Odometer sensor (auto-update after charge)"
+        }
+      }
+    }
   }
 }

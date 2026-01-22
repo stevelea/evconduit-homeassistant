@@ -210,3 +210,35 @@ class EVConduitClient:
             _LOGGER.exception(f"[EVConduitClient] Exception unregistering webhook: {err}")
         return False
 
+    async def async_update_odometer(self, odometer_km: float) -> dict | None:
+        """
+        Update the odometer reading for the latest charging session.
+        This allows Home Assistant to push odometer readings from OBD or other sources.
+        Returns the response dict if successful, None otherwise.
+        """
+        url = f"{self.base_url}/api/ha/charging/{self.vehicle_id}/odometer"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {"odometer_km": odometer_km}
+        _LOGGER.debug(f"[EVConduitClient] POST odometer update: {url} payload={payload}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload, headers=headers, timeout=15) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        _LOGGER.info(f"[EVConduitClient] Odometer updated successfully: {data}")
+                        return data
+                    elif resp.status == 404:
+                        text = await resp.text()
+                        _LOGGER.warning(f"[EVConduitClient] No charging session found to update: {text}")
+                        return None
+                    else:
+                        text = await resp.text()
+                        _LOGGER.error(f"[EVConduitClient] Odometer update failed HTTP {resp.status}: {text}")
+                        return None
+        except Exception as err:
+            _LOGGER.exception(f"[EVConduitClient] Exception updating odometer: {err}")
+        return None
+

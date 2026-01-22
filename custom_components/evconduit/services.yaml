@@ -12,3 +12,28 @@ set_charging:
           options:
             - "START"
             - "STOP"
+
+update_odometer:
+  name: Update Odometer
+  description: Update the odometer reading for the latest charging session. Use this to record odometer from OBD or other sources after a charge completes. Provide either an entity or a direct value.
+  fields:
+    odometer_entity:
+      name: Odometer Entity
+      description: Select a sensor entity that contains the odometer reading (in km).
+      required: false
+      example: "sensor.obd_odometer"
+      selector:
+        entity:
+          domain: sensor
+    odometer_km:
+      name: Odometer Value (km)
+      description: Direct odometer reading in kilometers. Used if no entity is selected.
+      required: false
+      example: 45000
+      selector:
+        number:
+          min: 0
+          max: 1000000
+          step: 1
+          unit_of_measurement: "km"
+          mode: box

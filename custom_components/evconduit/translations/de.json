@@ -24,5 +24,17 @@
       "prod": "Produktion",
       "sandbox": "Sandbox"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "EVConduit-Einstellungen",
+        "description": "Integrationseinstellungen konfigurieren.",
+        "data": {
+          "update_interval": "Aktualisierungsintervall (Minuten)",
+          "odometer_entity": "Kilometerzähler-Sensor (Auto-Update nach Laden)"
+        }
+      }
+    }
   }
 }

@@ -24,5 +24,17 @@
       "prod": "Produktion",
       "sandbox": "Sandbox"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "EVConduit-inställningar",
+        "description": "Konfigurera integrationen.",
+        "data": {
+          "update_interval": "Uppdateringsintervall (minuter)",
+          "odometer_entity": "Vägmätarsensor (auto-uppdatera efter laddning)"
+        }
+      }
+    }
   }
 }
