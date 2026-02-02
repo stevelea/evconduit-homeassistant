@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file. Follows [Se
 
 ---
 
+## \[1.5.2] - 2026-02-02
+
+### Added
+
+* New `send_abrp_telemetry` service to force send vehicle data to A Better Route Planner on demand
+
+---
+
 ## \[1.5.1] - 2026-02-02
 
 ### Improved

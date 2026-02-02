@@ -267,6 +267,31 @@ async def async_setup_entry(hass, entry) -> bool:
         )
         _LOGGER.debug("Service update_odometer registered")
 
+        # 3c) Register ABRP telemetry service (if ABRP is configured)
+        if abrp_token:
+            async def _handle_send_abrp(call):
+                """Force send current vehicle telemetry to ABRP."""
+                abrp = hass.data.get(DOMAIN, {}).get(f"{entry.entry_id}_abrp")
+                if not abrp:
+                    _LOGGER.error("ABRP client not available")
+                    return
+                if not vehicle_coord.data:
+                    _LOGGER.warning("No vehicle data available to send to ABRP")
+                    return
+                _LOGGER.debug("Service send_abrp_telemetry called")
+                try:
+                    await abrp.async_send_telemetry(vehicle_coord.data)
+                    _LOGGER.info("ABRP telemetry sent successfully")
+                except Exception:
+                    _LOGGER.exception("Error sending ABRP telemetry")
+
+            hass.services.async_register(
+                DOMAIN,
+                "send_abrp_telemetry",
+                _handle_send_abrp,
+            )
+            _LOGGER.debug("Service send_abrp_telemetry registered")
+
         # 4) Register webhook under /api/webhook/{entry_id}
         webhook_id = entry.entry_id
         async_register(
@@ -309,6 +334,8 @@ async def async_unload_entry(hass, entry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor", "device_tracker"])
     hass.services.async_remove(DOMAIN, "set_charging")
     hass.services.async_remove(DOMAIN, "update_odometer")
+    if hass.services.has_service(DOMAIN, "send_abrp_telemetry"):
+        hass.services.async_remove(DOMAIN, "send_abrp_telemetry")
     async_unregister(hass, entry.entry_id)
     _LOGGER.debug("Services and webhook unregistered")
 

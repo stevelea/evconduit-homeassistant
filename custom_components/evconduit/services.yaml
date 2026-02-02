@@ -37,3 +37,7 @@ update_odometer:
           step: 1
           unit_of_measurement: "km"
           mode: box
+
+send_abrp_telemetry:
+  name: Send ABRP Telemetry
+  description: Force send current vehicle telemetry to A Better Route Planner. Requires ABRP token to be configured.
