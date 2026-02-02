@@ -39,6 +39,8 @@ class EVConduitClient:
                         return data
 
                     _LOGGER.error(f"[EVConduitClient] Failed userinfo: HTTP {resp.status}")
+        except (TimeoutError, aiohttp.ClientError) as err:
+            _LOGGER.warning(f"[EVConduitClient] Userinfo request failed (will retry): {err}")
         except Exception as err:
             _LOGGER.exception(f"[EVConduitClient] Exception fetching userinfo: {err}")
         return None
@@ -105,6 +107,9 @@ class EVConduitClient:
         except UpdateFailed:
             # Re-raise UpdateFailed so coordinator preserves previous data
             raise
+        except (TimeoutError, aiohttp.ClientError) as err:
+            _LOGGER.warning(f"[EVConduitClient] Vehicle status request failed (will retry): {err}")
+            raise UpdateFailed(f"Network error: {err}")
         except Exception as err:
             _LOGGER.exception(f"[EVConduitClient] Exception fetching vehicle status: {err}")
             raise UpdateFailed(f"Exception: {err}")
@@ -128,6 +133,8 @@ class EVConduitClient:
                     _LOGGER.error(
                         f"[EVConduitClient] Charging failed HTTP {resp.status}: {text}"
                     )
+        except (TimeoutError, aiohttp.ClientError) as err:
+            _LOGGER.warning(f"[EVConduitClient] Charging request failed (network error): {err}")
         except Exception as err:
             _LOGGER.exception(f"[EVConduitClient] Exception setting charging: {err}")
         return None
@@ -149,6 +156,8 @@ class EVConduitClient:
                         # Expects: [{"id": "...", "displayName": "...", ...}, ...]
                         return data if isinstance(data, list) else []
                     _LOGGER.error(f"[EVConduitClient] Failed to get vehicles: HTTP {resp.status}")
+        except (TimeoutError, aiohttp.ClientError) as err:
+            _LOGGER.warning(f"[EVConduitClient] Vehicles request failed (will retry): {err}")
         except Exception as err:
             _LOGGER.exception(f"[EVConduitClient] Exception fetching vehicles: {err}")
         return []
@@ -184,6 +193,8 @@ class EVConduitClient:
                         text = await resp.text()
                         _LOGGER.error(f"[EVConduitClient] Webhook registration failed HTTP {resp.status}: {text}")
                         return False
+        except (TimeoutError, aiohttp.ClientError) as err:
+            _LOGGER.warning(f"[EVConduitClient] Webhook registration failed (network error): {err}")
         except Exception as err:
             _LOGGER.exception(f"[EVConduitClient] Exception registering webhook: {err}")
         return False
@@ -206,6 +217,8 @@ class EVConduitClient:
                         text = await resp.text()
                         _LOGGER.error(f"[EVConduitClient] Webhook unregister failed HTTP {resp.status}: {text}")
                         return False
+        except (TimeoutError, aiohttp.ClientError) as err:
+            _LOGGER.warning(f"[EVConduitClient] Webhook unregister failed (network error): {err}")
         except Exception as err:
             _LOGGER.exception(f"[EVConduitClient] Exception unregistering webhook: {err}")
         return False
@@ -238,6 +251,8 @@ class EVConduitClient:
                         text = await resp.text()
                         _LOGGER.error(f"[EVConduitClient] Odometer update failed HTTP {resp.status}: {text}")
                         return None
+        except (TimeoutError, aiohttp.ClientError) as err:
+            _LOGGER.warning(f"[EVConduitClient] Odometer update failed (network error): {err}")
         except Exception as err:
             _LOGGER.exception(f"[EVConduitClient] Exception updating odometer: {err}")
         return None

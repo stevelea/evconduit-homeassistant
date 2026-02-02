@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file. Follows [Se
 
 ---
 
+## \[1.5.1] - 2026-02-02
+
+### Improved
+
+* Reduced log noise for transient network errors (timeouts, connection issues)
+* Network errors now logged as warnings instead of full exception tracebacks
+* Affected methods: userinfo, vehicle status, charging, vehicles list, webhook registration, odometer update
+
+---
+
 ## \[0.1.0] - 2024-06-27
 
 ### First Public/Production Release
