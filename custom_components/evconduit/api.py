@@ -3,6 +3,7 @@ EVConduit API client for fetching user and vehicle information and
 handling rate‐limit (HTTP 429) with persistent notifications.
 """
 from datetime import datetime
+import asyncio
 import aiohttp
 import logging
 
@@ -41,6 +42,8 @@ class EVConduitClient:
                     _LOGGER.error(f"[EVConduitClient] Failed userinfo: HTTP {resp.status}")
         except (TimeoutError, aiohttp.ClientError) as err:
             _LOGGER.warning(f"[EVConduitClient] Userinfo request failed (will retry): {err}")
+        except asyncio.CancelledError:
+            raise
         except Exception as err:
             _LOGGER.exception(f"[EVConduitClient] Exception fetching userinfo: {err}")
         return None
@@ -110,6 +113,8 @@ class EVConduitClient:
         except (TimeoutError, aiohttp.ClientError) as err:
             _LOGGER.warning(f"[EVConduitClient] Vehicle status request failed (will retry): {err}")
             raise UpdateFailed(f"Network error: {err}")
+        except asyncio.CancelledError:
+            raise
         except Exception as err:
             _LOGGER.exception(f"[EVConduitClient] Exception fetching vehicle status: {err}")
             raise UpdateFailed(f"Exception: {err}")

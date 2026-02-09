@@ -199,7 +199,7 @@ class EVConduitLocation(CoordinatorEntity, SensorEntity):
     def extra_state_attributes(self) -> dict:
         """Expose latitude/longitude as attributes."""
         data = self.coordinator.data or {}
-        loc = data.get("location", {})
+        loc = data.get("location") or {}
         return {
             "latitude":  loc.get("latitude"),
             "longitude": loc.get("longitude"),

@@ -6,6 +6,7 @@ from datetime import timedelta
 import voluptuous as vol
 from aiohttp import web
 
+from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.components.webhook import async_register, async_unregister
 
@@ -145,10 +146,13 @@ async def async_setup_entry(hass, entry) -> bool:
             _LOGGER.info("ABRP integration enabled for entry %s", entry.entry_id)
 
             # Add listener to send telemetry on vehicle updates
-            async def _send_abrp_update():
+            @callback
+            def _send_abrp_update():
                 """Send vehicle telemetry to ABRP when data updates."""
                 if vehicle_coord.data:
-                    await abrp_client.async_send_telemetry(vehicle_coord.data)
+                    hass.async_create_task(
+                        abrp_client.async_send_telemetry(vehicle_coord.data)
+                    )
 
             vehicle_coord.async_add_listener(_send_abrp_update)
             _LOGGER.debug("ABRP update listener added to vehicle coordinator")
@@ -160,7 +164,8 @@ async def async_setup_entry(hass, entry) -> bool:
             # Track previous charging state to detect charge end
             prev_charging_state = {"is_charging": None}
 
-            async def _check_charging_ended():
+            @callback
+            def _check_charging_ended():
                 """Check if charging just ended and update odometer."""
                 if not vehicle_coord.data:
                     return
@@ -176,27 +181,30 @@ async def async_setup_entry(hass, entry) -> bool:
                 if was_charging is True and current_charging is False:
                     _LOGGER.info("Charging ended - updating odometer from %s", odometer_entity)
 
-                    # Read odometer value from entity
-                    state = hass.states.get(odometer_entity)
-                    if state is None:
-                        _LOGGER.warning("Odometer entity %s not found", odometer_entity)
-                        return
+                    async def _do_odometer_update():
+                        # Read odometer value from entity
+                        state = hass.states.get(odometer_entity)
+                        if state is None:
+                            _LOGGER.warning("Odometer entity %s not found", odometer_entity)
+                            return
 
-                    try:
-                        odometer_km = float(state.state)
-                    except (ValueError, TypeError):
-                        _LOGGER.warning("Invalid odometer value from %s: %s", odometer_entity, state.state)
-                        return
+                        try:
+                            odometer_km = float(state.state)
+                        except (ValueError, TypeError):
+                            _LOGGER.warning("Invalid odometer value from %s: %s", odometer_entity, state.state)
+                            return
 
-                    # Wait a bit for the charging session to be finalized in backend
-                    await asyncio.sleep(30)
+                        # Wait a bit for the charging session to be finalized in backend
+                        await asyncio.sleep(30)
 
-                    # Call API to update odometer
-                    result = await client.async_update_odometer(odometer_km)
-                    if result:
-                        _LOGGER.info("Auto-updated odometer to %s km after charge ended", odometer_km)
-                    else:
-                        _LOGGER.warning("Failed to auto-update odometer after charge ended")
+                        # Call API to update odometer
+                        result = await client.async_update_odometer(odometer_km)
+                        if result:
+                            _LOGGER.info("Auto-updated odometer to %s km after charge ended", odometer_km)
+                        else:
+                            _LOGGER.warning("Failed to auto-update odometer after charge ended")
+
+                    hass.async_create_task(_do_odometer_update())
 
             vehicle_coord.async_add_listener(_check_charging_ended)
             _LOGGER.debug("Auto-odometer update listener added to vehicle coordinator")
