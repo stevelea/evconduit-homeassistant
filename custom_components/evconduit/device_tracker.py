@@ -59,14 +59,14 @@ class EVConduitDeviceTracker(CoordinatorEntity, TrackerEntity):
     def latitude(self) -> float | None:
         """Return latitude value of the device."""
         data = self.coordinator.data or {}
-        location = data.get("location", {})
+        location = data.get("location") or {}
         return location.get("latitude")
 
     @property
     def longitude(self) -> float | None:
         """Return longitude value of the device."""
         data = self.coordinator.data or {}
-        location = data.get("location", {})
+        location = data.get("location") or {}
         return location.get("longitude")
 
     @property
