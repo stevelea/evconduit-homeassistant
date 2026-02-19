@@ -71,19 +71,6 @@ class EVConduitClient:
 
                     if resp.status == 429:
                         _LOGGER.warning(f"[EVConduitClient] Rate limited (429) on {url}")
-                        self.hass.async_create_task(
-                            self.hass.services.async_call(
-                                "persistent_notification",
-                                "create",
-                                {
-                                    "title": "EVConduit Rate Limit",
-                                    "message": (
-                                        f"Rate limit hit for vehicle {self.vehicle_id}. "
-                                        "Skipping this update."
-                                    ),
-                                },
-                            )
-                        )
                         # On first refresh, return empty data so setup completes
                         # and the next poll cycle can fetch real data
                         if not getattr(self, "_has_initial_data", False):
