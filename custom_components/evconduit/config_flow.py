@@ -148,7 +148,7 @@ class EVConduitOptionsFlowHandler(config_entries.OptionsFlow):
                 ): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
                 vol.Optional(
                     CONF_ODOMETER_ENTITY,
-                    default=self.config_entry.options.get(CONF_ODOMETER_ENTITY, "")
+                    description={"suggested_value": self.config_entry.options.get(CONF_ODOMETER_ENTITY) or None},
                 ): EntitySelector(EntitySelectorConfig(domain="sensor")),
             }),
             description_placeholders={

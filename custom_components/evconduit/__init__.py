@@ -158,7 +158,7 @@ async def async_setup_entry(hass, entry) -> bool:
             _LOGGER.debug("ABRP update listener added to vehicle coordinator")
 
         # 2c) Set up auto-odometer update if entity is configured
-        odometer_entity = entry.options.get(CONF_ODOMETER_ENTITY, "")
+        odometer_entity = entry.options.get(CONF_ODOMETER_ENTITY) or ""
         if odometer_entity:
             _LOGGER.info("Auto-odometer update enabled with entity: %s", odometer_entity)
             # Track previous charging state to detect charge end
