@@ -39,9 +39,9 @@ class EVConduitClient:
                         _LOGGER.debug(f"[EVConduitClient] Userinfo: {data}")
                         return data
 
-                    _LOGGER.error(f"[EVConduitClient] Failed userinfo: HTTP {resp.status}")
+                    _LOGGER.debug(f"[EVConduitClient] Failed userinfo: HTTP {resp.status}")
         except (TimeoutError, aiohttp.ClientError) as err:
-            _LOGGER.warning(f"[EVConduitClient] Userinfo request failed (will retry): {err}")
+            _LOGGER.debug(f"[EVConduitClient] Userinfo request failed (will retry): {err}")
         except asyncio.CancelledError:
             raise
         except Exception as err:
@@ -70,11 +70,12 @@ class EVConduitClient:
                         return data
 
                     if resp.status == 429:
-                        _LOGGER.warning(f"[EVConduitClient] Rate limited (429) on {url}")
+                        _LOGGER.debug(f"[EVConduitClient] Rate limited (429) on {url}")
                         # On first refresh, return empty data so setup completes
                         # and the next poll cycle can fetch real data
                         if not getattr(self, "_has_initial_data", False):
-                            _LOGGER.warning("[EVConduitClient] Rate limited on first refresh, returning empty data to allow setup")
+                            _LOGGER.debug("[EVConduitClient] Rate limited on first refresh, returning empty data to allow setup")
+                            self._has_initial_data = True
                             return {}
                         raise UpdateFailed("429 rate limited by EVConduit")
                     
@@ -106,7 +107,7 @@ class EVConduitClient:
             # Re-raise UpdateFailed so coordinator preserves previous data
             raise
         except (TimeoutError, aiohttp.ClientError) as err:
-            _LOGGER.warning(f"[EVConduitClient] Vehicle status request failed (will retry): {err}")
+            _LOGGER.debug(f"[EVConduitClient] Vehicle status request failed (will retry): {err}")
             raise UpdateFailed(f"Network error: {err}")
         except asyncio.CancelledError:
             raise
