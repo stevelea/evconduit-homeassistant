@@ -51,7 +51,9 @@ class EVConduitClient:
     async def async_get_vehicle_status(self) -> dict:
         """
         Fetch full status for the configured vehicle.
-        Raises UpdateFailed on rate‐limit (429) to skip this cycle.
+        Raises UpdateFailed on rate‐limit (429) to skip this cycle,
+        unless it's the first refresh (no previous data) in which case
+        returns empty dict so setup can complete.
         """
         _LOGGER.info("Polling vehicle status at %s", datetime.now())
         url = f"{self.base_url}/api/status/{self.vehicle_id}"
@@ -64,6 +66,7 @@ class EVConduitClient:
                     if resp.status == 200:
                         data = await resp.json()
                         _LOGGER.debug(f"[EVConduitClient] Vehicle status: {data}")
+                        self._has_initial_data = True
                         return data
 
                     if resp.status == 429:
@@ -81,6 +84,11 @@ class EVConduitClient:
                                 },
                             )
                         )
+                        # On first refresh, return empty data so setup completes
+                        # and the next poll cycle can fetch real data
+                        if not getattr(self, "_has_initial_data", False):
+                            _LOGGER.warning("[EVConduitClient] Rate limited on first refresh, returning empty data to allow setup")
+                            return {}
                         raise UpdateFailed("429 rate limited by EVConduit")
                     
                     # Bad request (e.g. invalid vehicle_id, backend error, etc)
