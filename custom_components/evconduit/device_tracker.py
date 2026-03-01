@@ -49,7 +49,7 @@ class EVConduitDeviceTracker(CoordinatorEntity, TrackerEntity):
         vehicle_name = data.get("vehicleName")
         if vehicle_name:
             return f"{vehicle_name}"
-        return "EVConduit Vehicle"
+        return "Vehicle"
 
     @property
     def latitude(self) -> float | None:

@@ -123,7 +123,7 @@ class EVConduitSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def name(self):
-        return f"EVConduit {self._name}"
+        return self._name
 
     @property
     def state(self):
@@ -159,7 +159,7 @@ class EVConduitVehicleSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def name(self):
-        return f"EVConduit {self._name}"
+        return self._name
 
     @property
     def state(self):
@@ -206,7 +206,7 @@ class EVConduitLocation(CoordinatorEntity, SensorEntity):
 
     @property
     def name(self) -> str:
-        return "EVConduit Location"
+        return "Location"
 
     @property
     def state(self) -> str:
@@ -245,7 +245,7 @@ class EVConduitWebhookIdSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def name(self):
-        return f"EVConduit {self._name}"
+        return self._name
 
     @property
     def state(self):
@@ -280,7 +280,7 @@ class EVConduitLastSeenLocalSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def name(self):
-        return "EVConduit Last Seen Local"
+        return "Last Seen Local"
 
     @property
     def state(self):
