@@ -16,24 +16,44 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         errors = {}
+
+        # If there's already a configured entry, reuse its credentials
+        # and skip straight to vehicle selection
+        existing = self._async_current_entries()
+        if existing and user_input is None:
+            entry = existing[0]
+            api_key = entry.data.get(CONF_API_KEY)
+            environment = entry.data.get(CONF_ENVIRONMENT, "prod")
+            base_url = ENVIRONMENTS[environment]
+
+            # Validate the existing key still works
+            try:
+                client = EVConduitClient(self.hass, api_key, base_url, "dummy")
+                userinfo = await client.async_get_userinfo()
+                if userinfo:
+                    _LOGGER.info("[ConfigFlow] Reusing credentials from existing entry, skipping to vehicle selection")
+                    self.context["api_key"] = api_key
+                    self.context["environment"] = environment
+                    self.context["abrp_token"] = entry.data.get(CONF_ABRP_TOKEN, "")
+                    return await self.async_step_vehicle()
+            except Exception:
+                _LOGGER.debug("[ConfigFlow] Existing credentials failed, showing full setup form")
+
         if user_input is not None:
             api_key = user_input[CONF_API_KEY]
             environment = user_input[CONF_ENVIRONMENT]
             base_url = ENVIRONMENTS[environment]
             _LOGGER.debug(f"[ConfigFlow] User entered API key: {api_key}, environment: {environment}")
 
-            # Validera API-key mot backend!
             try:
                 client = EVConduitClient(self.hass, api_key, base_url, "dummy")
-                _LOGGER.debug("[ConfigFlow] Created EVConduitClient for API key validation")
                 userinfo = await client.async_get_userinfo()
-                _LOGGER.debug(f"[ConfigFlow] Result from async_get_userinfo: {userinfo}")
 
                 if not userinfo:
                     _LOGGER.warning("[ConfigFlow] API key validation failed: No userinfo returned")
                     errors["api_key"] = "invalid_api_key"
                 else:
-                    _LOGGER.info("[ConfigFlow] API key validated successfully, proceeding to vehicle_id step")
+                    _LOGGER.info("[ConfigFlow] API key validated successfully, proceeding to vehicle selection")
                     self.context["api_key"] = api_key
                     self.context["environment"] = environment
                     self.context["abrp_token"] = user_input.get(CONF_ABRP_TOKEN, "")
@@ -82,7 +102,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             choices[label] = f"{name}"
             #choices[label] = f"{name} ({vin})"
 
-        _LOGGER.warning(f"[ConfigFlow] Available vehicles: {choices}")
+        # Filter out vehicles that are already configured
+        configured_ids = {
+            e.data.get(CONF_VEHICLE_ID)
+            for e in self._async_current_entries()
+        }
+        choices = {vid: name for vid, name in choices.items() if vid not in configured_ids}
+
+        _LOGGER.debug(f"[ConfigFlow] Available vehicles (excluding configured): {choices}")
 
         if not choices:
             errors["base"] = "no_vehicles"
