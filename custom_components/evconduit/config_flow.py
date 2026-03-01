@@ -89,6 +89,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         
         if user_input is not None:
             vehicle_id = user_input[CONF_VEHICLE_ID]
+
+            # Prevent duplicate entries for the same vehicle
+            await self.async_set_unique_id(vehicle_id)
+            self._abort_if_unique_id_configured()
+
+            # Use vehicle display name as entry title
+            entry_title = choices.get(vehicle_id, "EVConduit")
+
             entry_data = {
                 CONF_API_KEY: api_key,
                 CONF_ENVIRONMENT: environment,
@@ -98,8 +106,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             abrp_token = self.context.get("abrp_token", "")
             if abrp_token:
                 entry_data[CONF_ABRP_TOKEN] = abrp_token
-            _LOGGER.info("[ConfigFlow] Creating config entry with API key, environment and vehicle_id")
-            return self.async_create_entry(title="EVConduit", data=entry_data)
+            _LOGGER.info("[ConfigFlow] Creating config entry for vehicle '%s'", entry_title)
+            return self.async_create_entry(title=entry_title, data=entry_data)
         
         return self.async_show_form(
             step_id="vehicle",
@@ -111,12 +119,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
     async def async_step_reconfigure(self, user_input=None):
-        entry = self._async_current_entries()[0] if self._async_current_entries() else None
+        entry = self.hass.config_entries.async_get_entry(self.context.get("entry_id", ""))
+        if not entry:
+            # Fallback for older HA versions
+            entries = self._async_current_entries()
+            entry = entries[0] if entries else None
         data = entry.data if entry else {}
 
         if user_input is not None and entry:
             self.hass.config_entries.async_update_entry(entry, data=user_input)
-            _LOGGER.info("Config entry updated via reconfigure.")
+            _LOGGER.info("Config entry %s updated via reconfigure.", entry.entry_id)
             return self.async_abort(reason="reconfigured")
 
         return self.async_show_form(

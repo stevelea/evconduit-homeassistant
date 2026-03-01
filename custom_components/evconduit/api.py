@@ -163,7 +163,7 @@ class EVConduitClient:
             _LOGGER.exception(f"[EVConduitClient] Exception fetching vehicles: {err}")
         return []
 
-    async def async_register_webhook(self, webhook_id: str, external_url: str) -> bool:
+    async def async_register_webhook(self, webhook_id: str, external_url: str, vehicle_id: str = "") -> bool:
         """
         Register the Home Assistant webhook URL with EVConduit.
         This enables push notifications for real-time vehicle updates.
@@ -177,6 +177,7 @@ class EVConduitClient:
         payload = {
             "webhook_id": webhook_id,
             "external_url": external_url.rstrip("/"),
+            "vehicle_id": vehicle_id,
         }
         _LOGGER.debug(f"[EVConduitClient] POST webhook register: {url}")
         try:

@@ -7,6 +7,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .sensor import _build_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,12 +35,7 @@ class EVConduitDeviceTracker(CoordinatorEntity, TrackerEntity):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device info to link this entity to the EVConduit device."""
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "name": "EVConduit",
-            "manufacturer": "Roger Aspelin",
-            "model": "EVConduit Integration",
-        }
+        return _build_device_info(self._entry, self.coordinator.data)
 
     @property
     def unique_id(self) -> str:

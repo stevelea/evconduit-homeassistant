@@ -9,6 +9,40 @@ from datetime import datetime
 import logging
 _LOGGER = logging.getLogger(__name__)
 
+
+def _build_device_info(entry, vehicle_data: dict | None = None) -> DeviceInfo:
+    """Build device_info using vehicle name and model from data."""
+    if vehicle_data:
+        name = vehicle_data.get("vehicleName")
+        if not name:
+            info = vehicle_data.get("information", {})
+            name = info.get("displayName")
+        if not name:
+            info = vehicle_data.get("information", {})
+            brand = info.get("brand", "")
+            model = info.get("model", "")
+            name = f"{brand} {model}".strip()
+
+        info = vehicle_data.get("information", {})
+        brand = info.get("brand", "")
+        model_str = info.get("model", "")
+        year = info.get("year")
+        model_parts = [p for p in [brand, model_str] if p]
+        model_display = " ".join(model_parts)
+        if year:
+            model_display = f"{model_display} ({year})" if model_display else str(year)
+    else:
+        name = None
+        model_display = None
+
+    return {
+        "identifiers": {(DOMAIN, entry.entry_id)},
+        "name": name or entry.title or "EVConduit",
+        "manufacturer": "EVConduit",
+        "model": model_display or "EVConduit Integration",
+    }
+
+
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up EVConduit sensors."""
     user_coordinator = hass.data[DOMAIN].get(entry.entry_id)
@@ -16,7 +50,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     entities = []
 
-    # Hämta capabilities från senaste vehicle-status
     vehicle_data = vehicle_coordinator.data or {}
     capabilities = vehicle_data.get("capabilities", {})
     _LOGGER.debug("[EVConduit] Vehicle capabilities: %s", capabilities)
@@ -30,7 +63,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # Userinfo sensors
     for field, (label, unit) in USER_FIELDS.items():
-        entities.append(EVConduitSensor(user_coordinator, entry, field, label, unit))
+        entities.append(EVConduitSensor(user_coordinator, entry, field, label, unit, vehicle_coordinator))
 
     # Vehicle status sensors, nu med filtrering!
     if vehicle_coordinator:
@@ -67,7 +100,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     )
 
     for field, (label, unit) in WEBHOOK_FIELDS.items():
-        entities.append(EVConduitWebhookIdSensor(user_coordinator, entry, field, label, unit))
+        entities.append(EVConduitWebhookIdSensor(user_coordinator, entry, field, label, unit, vehicle_coordinator))
 
     async_add_entities(entities)
 
@@ -75,21 +108,18 @@ async def async_setup_entry(hass, entry, async_add_entities):
 class EVConduitSensor(CoordinatorEntity, SensorEntity):
     """Sensor for user information."""
 
-    def __init__(self, coordinator, entry, field, name, unit):
+    def __init__(self, coordinator, entry, field, name, unit, vehicle_coordinator=None):
         super().__init__(coordinator)
         self._entry = entry
         self._field = field
         self._name = name
         self._unit = unit
+        self._vehicle_coordinator = vehicle_coordinator
 
     @property
     def device_info(self) -> DeviceInfo:
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "name": "EVConduit",
-            "manufacturer": "Roger Aspelin",
-            "model": "EVConduit Integration",
-        }
+        vdata = self._vehicle_coordinator.data if self._vehicle_coordinator else None
+        return _build_device_info(self._entry, vdata)
 
     @property
     def name(self):
@@ -125,12 +155,7 @@ class EVConduitVehicleSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "name": "EVConduit",
-            "manufacturer": "Roger Aspelin",
-            "model": "EVConduit Integration",
-        }
+        return _build_device_info(self._entry, self.coordinator.data)
 
     @property
     def name(self):
@@ -177,12 +202,7 @@ class EVConduitLocation(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "name": "EVConduit",
-            "manufacturer": "Roger Aspelin",
-            "model": "EVConduit Integration",
-        }
+        return _build_device_info(self._entry, self.coordinator.data)
 
     @property
     def name(self) -> str:
@@ -210,21 +230,18 @@ class EVConduitLocation(CoordinatorEntity, SensorEntity):
         return f"{DOMAIN}-{self._entry.entry_id}-location"
 
 class EVConduitWebhookIdSensor(CoordinatorEntity, SensorEntity):
-    def __init__(self, coordinator, entry, field, name, unit):
+    def __init__(self, coordinator, entry, field, name, unit, vehicle_coordinator=None):
         super().__init__(coordinator)
         self._entry = entry
         self._field = field
         self._name = name
         self._unit = unit
+        self._vehicle_coordinator = vehicle_coordinator
 
     @property
     def device_info(self) -> DeviceInfo:
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "name": "EVConduit",
-            "manufacturer": "Roger Aspelin",
-            "model": "EVConduit Integration",
-        }
+        vdata = self._vehicle_coordinator.data if self._vehicle_coordinator else None
+        return _build_device_info(self._entry, vdata)
 
     @property
     def name(self):
@@ -259,12 +276,7 @@ class EVConduitLastSeenLocalSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "name": "EVConduit",
-            "manufacturer": "Roger Aspelin",
-            "model": "EVConduit Integration",
-        }
+        return _build_device_info(self._entry, self.coordinator.data)
 
     @property
     def name(self):

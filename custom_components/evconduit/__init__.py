@@ -28,24 +28,35 @@ async def _handle_push_webhook(hass, webhook_id: str, request) -> web.Response:
         _LOGGER.debug("Push payload: %s", data)
 
         coord = hass.data.get(DOMAIN, {}).get(f"{webhook_id}_vehicle")
+        if not coord:
+            _LOGGER.warning("No vehicle coordinator found for webhook_id=%s", webhook_id)
+            return web.Response(status=404, text="No coordinator")
         old = coord.data or {}
 
-        # Ta endast vehicle-datan!
         vehicle_update = data.get("vehicle", {})
         if not vehicle_update:
             _LOGGER.warning("No 'vehicle' field in webhook payload, ignoring.")
             return web.Response(status=400, text="Missing vehicle data")
 
         # Get the configured vehicle_id from the entry
+        # Users may have configured with either the Enode ID or the internal DB ID,
+        # so check against all IDs provided by the backend.
         entry = hass.config_entries.async_get_entry(webhook_id)
         if entry:
             configured_vehicle_id = entry.data.get(CONF_VEHICLE_ID)
-            incoming_vehicle_id = vehicle_update.get("id")
-            if configured_vehicle_id and incoming_vehicle_id and configured_vehicle_id != incoming_vehicle_id:
+            incoming_ids = {
+                vehicle_update.get("id"),
+                vehicle_update.get("enodeId"),
+                data.get("enodeVehicleId"),
+                data.get("internalVehicleId"),
+                data.get("vehicleId"),
+            }
+            incoming_ids.discard(None)
+            if configured_vehicle_id and incoming_ids and configured_vehicle_id not in incoming_ids:
                 _LOGGER.debug(
                     "Ignoring webhook for different vehicle: configured=%s, incoming=%s",
                     configured_vehicle_id,
-                    incoming_vehicle_id,
+                    incoming_ids,
                 )
                 return web.Response(status=200, text="OK (ignored - different vehicle)")
 
@@ -80,7 +91,6 @@ async def _handle_push_webhook(hass, webhook_id: str, request) -> web.Response:
         # Submit the merged data
         coord.async_set_updated_data(merged)
         _LOGGER.debug("Manually updated evconduit vehicle status data")
-
 
         return web.Response(status=200, text="OK")
 
@@ -209,96 +219,119 @@ async def async_setup_entry(hass, entry) -> bool:
             vehicle_coord.async_add_listener(_check_charging_ended)
             _LOGGER.debug("Auto-odometer update listener added to vehicle coordinator")
 
-        # 3) Register charging service
-        schema = vol.Schema({vol.Required("action"): vol.In(["START", "STOP"])})
-        async def _handle_charging(call):
-            action = call.data["action"]
-            _LOGGER.debug("Service set_charging called with action=%s", action)
-            try:
-                result = await client.async_set_charging(action)
-                if result:
-                    _LOGGER.info("Charging %s executed successfully", action)
-                else:
-                    _LOGGER.error("Charging %s failed or returned None", action)
-            except Exception as e:
-                _LOGGER.exception("Error in set_charging service")
+        # 3) Register global services (once for the domain, dispatched by vehicle_id)
+        if not hass.services.has_service(DOMAIN, "set_charging"):
+            schema = vol.Schema({
+                vol.Required("action"): vol.In(["START", "STOP"]),
+                vol.Optional("vehicle_id"): str,
+            })
 
-        hass.services.async_register(
-            DOMAIN,
-            "set_charging",
-            _handle_charging,
-            schema=schema,
-        )
-        _LOGGER.debug("Service set_charging registered")
+            async def _handle_charging(call):
+                action = call.data["action"]
+                target_vehicle = call.data.get("vehicle_id")
+                _LOGGER.debug("Service set_charging called with action=%s vehicle_id=%s", action, target_vehicle)
 
-        # 3b) Register odometer update service
-        odometer_schema = vol.Schema({
-            vol.Optional("odometer_entity"): str,
-            vol.Optional("odometer_km"): vol.Coerce(float),
-        })
-        async def _handle_odometer(call):
-            odometer_entity = call.data.get("odometer_entity")
-            odometer_km = call.data.get("odometer_km")
+                # Find matching client(s)
+                domain_data = hass.data.get(DOMAIN, {})
+                clients_used = 0
+                for e in hass.config_entries.async_entries(DOMAIN):
+                    if target_vehicle and e.data.get(CONF_VEHICLE_ID) != target_vehicle:
+                        continue
+                    c = domain_data.get(f"{e.entry_id}_client")
+                    if not c:
+                        continue
+                    try:
+                        result = await c.async_set_charging(action)
+                        if result:
+                            _LOGGER.info("Charging %s executed for vehicle %s", action, e.data.get(CONF_VEHICLE_ID))
+                        else:
+                            _LOGGER.error("Charging %s failed for vehicle %s", action, e.data.get(CONF_VEHICLE_ID))
+                    except Exception:
+                        _LOGGER.exception("Error in set_charging service for vehicle %s", e.data.get(CONF_VEHICLE_ID))
+                    clients_used += 1
+                    if target_vehicle:
+                        break
 
-            # If entity provided, read the value from it
-            if odometer_entity:
-                state = hass.states.get(odometer_entity)
-                if state is None:
-                    _LOGGER.error("Entity %s not found", odometer_entity)
+                if clients_used == 0:
+                    _LOGGER.error("No matching vehicle found for set_charging (vehicle_id=%s)", target_vehicle)
+
+            hass.services.async_register(DOMAIN, "set_charging", _handle_charging, schema=schema)
+            _LOGGER.debug("Service set_charging registered (global)")
+
+        if not hass.services.has_service(DOMAIN, "update_odometer"):
+            odometer_schema = vol.Schema({
+                vol.Optional("odometer_entity"): str,
+                vol.Optional("odometer_km"): vol.Coerce(float),
+                vol.Optional("vehicle_id"): str,
+            })
+
+            async def _handle_odometer(call):
+                odo_entity = call.data.get("odometer_entity")
+                odometer_km = call.data.get("odometer_km")
+                target_vehicle = call.data.get("vehicle_id")
+
+                if odo_entity:
+                    state = hass.states.get(odo_entity)
+                    if state is None:
+                        _LOGGER.error("Entity %s not found", odo_entity)
+                        return
+                    try:
+                        odometer_km = float(state.state)
+                    except (ValueError, TypeError):
+                        _LOGGER.error("Entity %s has invalid state: %s", odo_entity, state.state)
+                        return
+
+                if odometer_km is None:
+                    _LOGGER.error("No odometer value provided (use odometer_entity or odometer_km)")
                     return
-                try:
-                    odometer_km = float(state.state)
-                    _LOGGER.debug("Read odometer value %s from entity %s", odometer_km, odometer_entity)
-                except (ValueError, TypeError):
-                    _LOGGER.error("Entity %s has invalid state: %s", odometer_entity, state.state)
-                    return
 
-            if odometer_km is None:
-                _LOGGER.error("No odometer value provided (use odometer_entity or odometer_km)")
-                return
+                domain_data = hass.data.get(DOMAIN, {})
+                for e in hass.config_entries.async_entries(DOMAIN):
+                    if target_vehicle and e.data.get(CONF_VEHICLE_ID) != target_vehicle:
+                        continue
+                    c = domain_data.get(f"{e.entry_id}_client")
+                    if not c:
+                        continue
+                    try:
+                        result = await c.async_update_odometer(odometer_km)
+                        if result:
+                            _LOGGER.info("Odometer updated to %s km for vehicle %s", odometer_km, e.data.get(CONF_VEHICLE_ID))
+                        else:
+                            _LOGGER.warning("Odometer update failed for vehicle %s", e.data.get(CONF_VEHICLE_ID))
+                    except Exception:
+                        _LOGGER.exception("Error in update_odometer service")
+                    if target_vehicle:
+                        break
 
-            _LOGGER.debug("Service update_odometer called with odometer_km=%s", odometer_km)
-            try:
-                result = await client.async_update_odometer(odometer_km)
-                if result:
-                    _LOGGER.info("Odometer updated successfully to %s km", odometer_km)
-                else:
-                    _LOGGER.warning("Odometer update failed or no session found")
-            except Exception as e:
-                _LOGGER.exception("Error in update_odometer service")
+            hass.services.async_register(DOMAIN, "update_odometer", _handle_odometer, schema=odometer_schema)
+            _LOGGER.debug("Service update_odometer registered (global)")
 
-        hass.services.async_register(
-            DOMAIN,
-            "update_odometer",
-            _handle_odometer,
-            schema=odometer_schema,
-        )
-        _LOGGER.debug("Service update_odometer registered")
-
-        # 3c) Register ABRP telemetry service (if ABRP is configured)
-        if abrp_token:
+        if not hass.services.has_service(DOMAIN, "send_abrp_telemetry"):
             async def _handle_send_abrp(call):
                 """Force send current vehicle telemetry to ABRP."""
-                abrp = hass.data.get(DOMAIN, {}).get(f"{entry.entry_id}_abrp")
-                if not abrp:
-                    _LOGGER.error("ABRP client not available")
-                    return
-                if not vehicle_coord.data:
-                    _LOGGER.warning("No vehicle data available to send to ABRP")
-                    return
-                _LOGGER.debug("Service send_abrp_telemetry called")
-                try:
-                    await abrp.async_send_telemetry(vehicle_coord.data)
-                    _LOGGER.info("ABRP telemetry sent successfully")
-                except Exception:
-                    _LOGGER.exception("Error sending ABRP telemetry")
+                target_vehicle = call.data.get("vehicle_id") if call.data else None
+                domain_data = hass.data.get(DOMAIN, {})
+                for e in hass.config_entries.async_entries(DOMAIN):
+                    if target_vehicle and e.data.get(CONF_VEHICLE_ID) != target_vehicle:
+                        continue
+                    abrp = domain_data.get(f"{e.entry_id}_abrp")
+                    if not abrp:
+                        continue
+                    vcoord = domain_data.get(f"{e.entry_id}_vehicle")
+                    if not vcoord or not vcoord.data:
+                        _LOGGER.warning("No vehicle data for ABRP telemetry (vehicle %s)", e.data.get(CONF_VEHICLE_ID))
+                        continue
+                    try:
+                        await abrp.async_send_telemetry(vcoord.data)
+                        _LOGGER.info("ABRP telemetry sent for vehicle %s", e.data.get(CONF_VEHICLE_ID))
+                    except Exception:
+                        _LOGGER.exception("Error sending ABRP telemetry for vehicle %s", e.data.get(CONF_VEHICLE_ID))
+                    if target_vehicle:
+                        break
 
-            hass.services.async_register(
-                DOMAIN,
-                "send_abrp_telemetry",
-                _handle_send_abrp,
-            )
-            _LOGGER.debug("Service send_abrp_telemetry registered")
+            abrp_schema = vol.Schema({vol.Optional("vehicle_id"): str})
+            hass.services.async_register(DOMAIN, "send_abrp_telemetry", _handle_send_abrp, schema=abrp_schema)
+            _LOGGER.debug("Service send_abrp_telemetry registered (global)")
 
         # 4) Register webhook under /api/webhook/{entry_id}
         webhook_id = entry.entry_id
@@ -314,7 +347,7 @@ async def async_setup_entry(hass, entry) -> bool:
         # 5) Register webhook with EVConduit backend (for Pro users)
         external_url = hass.config.external_url
         if external_url:
-            registered = await client.async_register_webhook(webhook_id, external_url)
+            registered = await client.async_register_webhook(webhook_id, external_url, vehicle_id)
             if registered:
                 _LOGGER.info("Webhook registered with EVConduit backend for push notifications")
             else:
@@ -340,12 +373,20 @@ async def async_unload_entry(hass, entry) -> bool:
     """Unload EVConduit: deregister webhook & service, remove coordinators."""
     _LOGGER.debug("Unloading EVConduit entry %s", entry.entry_id)
     unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor", "device_tracker"])
-    hass.services.async_remove(DOMAIN, "set_charging")
-    hass.services.async_remove(DOMAIN, "update_odometer")
-    if hass.services.has_service(DOMAIN, "send_abrp_telemetry"):
-        hass.services.async_remove(DOMAIN, "send_abrp_telemetry")
+
+    # Only remove global services if this is the last entry being unloaded
+    remaining = sum(
+        1 for e in hass.config_entries.async_entries(DOMAIN)
+        if e.entry_id != entry.entry_id
+    )
+    if remaining == 0:
+        for svc in ("set_charging", "update_odometer", "send_abrp_telemetry"):
+            if hass.services.has_service(DOMAIN, svc):
+                hass.services.async_remove(DOMAIN, svc)
+        _LOGGER.debug("All services removed (last entry unloaded)")
+
     async_unregister(hass, entry.entry_id)
-    _LOGGER.debug("Services and webhook unregistered")
+    _LOGGER.debug("Webhook unregistered for entry %s", entry.entry_id)
 
     # Unregister webhook from EVConduit backend
     client = hass.data.get(DOMAIN, {}).get(f"{entry.entry_id}_client")
