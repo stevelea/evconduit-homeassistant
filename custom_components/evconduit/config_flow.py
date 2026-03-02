@@ -184,7 +184,7 @@ class EVConduitOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(
                     CONF_UPDATE_INTERVAL,
                     default=self.config_entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
-                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=60)),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=9000)),
                 vol.Optional(
                     CONF_ODOMETER_ENTITY,
                     description={"suggested_value": self.config_entry.options.get(CONF_ODOMETER_ENTITY) or None},
