@@ -252,7 +252,7 @@ async def async_setup_entry(hass, entry) -> bool:
                     return
                 try:
                     rate_value = float(state.state)
-                    if rate_value > 0:
+                    if rate_value >= 0:
                         await _push_rate(rate_value)
                 except (ValueError, TypeError):
                     _LOGGER.debug("Invalid electricity rate value: %s", state.state)
@@ -265,7 +265,7 @@ async def async_setup_entry(hass, entry) -> bool:
                     return
                 try:
                     rate_value = float(new_state.state)
-                    if rate_value > 0:
+                    if rate_value >= 0:
                         await _push_rate(rate_value)
                 except (ValueError, TypeError):
                     _LOGGER.debug("Invalid electricity rate value on change: %s", new_state.state)
