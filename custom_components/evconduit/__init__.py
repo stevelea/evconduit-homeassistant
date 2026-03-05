@@ -225,6 +225,8 @@ async def async_setup_entry(hass, entry) -> bool:
         # 2d) Set up electricity rate push if entity is configured
         elec_rate_entity = entry.options.get(CONF_ELECTRICITY_RATE_ENTITY) or ""
         elec_rate_currency = (entry.options.get(CONF_ELECTRICITY_RATE_CURRENCY) or "").strip().upper()
+        if not elec_rate_currency or len(elec_rate_currency) != 3:
+            elec_rate_currency = (hass.config.currency or "").strip().upper()
         if elec_rate_entity and elec_rate_currency and len(elec_rate_currency) == 3:
             _LOGGER.info(
                 "Electricity rate push enabled: entity=%s, currency=%s",
@@ -288,8 +290,8 @@ async def async_setup_entry(hass, entry) -> bool:
             _LOGGER.debug("Electricity rate push listeners set up")
         elif elec_rate_entity:
             _LOGGER.warning(
-                "Electricity rate entity configured (%s) but currency is missing or invalid (%s). "
-                "Set a 3-letter currency code (e.g. AUD, SEK, EUR) in options.",
+                "Electricity rate entity configured (%s) but currency could not be determined (%s). "
+                "Set a 3-letter currency code in options, or configure your HA currency in Settings → General.",
                 elec_rate_entity, elec_rate_currency,
             )
 

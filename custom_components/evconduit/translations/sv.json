@@ -34,7 +34,7 @@
           "update_interval": "Uppdateringsintervall (minuter)",
           "odometer_entity": "Vägmätarsensor (auto-uppdatera efter laddning)",
           "electricity_rate_entity": "Elpris-sensor (valfritt)",
-          "electricity_rate_currency": "Elpris-valuta (t.ex. SEK, EUR)"
+          "electricity_rate_currency": "Valuta (auto-detekteras från HA-inställningar)"
         }
       }
     }

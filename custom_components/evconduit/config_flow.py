@@ -199,7 +199,9 @@ class EVConduitOptionsFlowHandler(config_entries.OptionsFlow):
                 ): EntitySelector(EntitySelectorConfig(domain="sensor")),
                 vol.Optional(
                     CONF_ELECTRICITY_RATE_CURRENCY,
-                    default=self.config_entry.options.get(CONF_ELECTRICITY_RATE_CURRENCY, ""),
+                    default=self.config_entry.options.get(
+                        CONF_ELECTRICITY_RATE_CURRENCY, ""
+                    ) or self.hass.config.currency or "",
                 ): str,
             }),
         )
