@@ -32,7 +32,9 @@
         "description": "Configure integration settings.",
         "data": {
           "update_interval": "Update interval (minutes)",
-          "odometer_entity": "Odometer sensor (auto-update after charge)"
+          "odometer_entity": "Odometer sensor (auto-update after charge)",
+          "electricity_rate_entity": "Electricity rate sensor (optional)",
+          "electricity_rate_currency": "Electricity rate currency (e.g. AUD, SEK)"
         }
       }
     }

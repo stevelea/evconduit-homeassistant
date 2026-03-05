@@ -10,10 +10,13 @@ from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.components.webhook import async_register, async_unregister
 
+from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
+
 from .const import (
     DOMAIN, ENVIRONMENTS,
     CONF_API_KEY, CONF_ENVIRONMENT, CONF_VEHICLE_ID, CONF_UPDATE_INTERVAL,
-    CONF_ABRP_TOKEN, CONF_ODOMETER_ENTITY, DEFAULT_UPDATE_INTERVAL,
+    CONF_ABRP_TOKEN, CONF_ODOMETER_ENTITY, CONF_ELECTRICITY_RATE_ENTITY,
+    CONF_ELECTRICITY_RATE_CURRENCY, DEFAULT_UPDATE_INTERVAL,
 )
 from .api import EVConduitClient
 from .abrp import ABRPClient
@@ -219,6 +222,77 @@ async def async_setup_entry(hass, entry) -> bool:
             vehicle_coord.async_add_listener(_check_charging_ended)
             _LOGGER.debug("Auto-odometer update listener added to vehicle coordinator")
 
+        # 2d) Set up electricity rate push if entity is configured
+        elec_rate_entity = entry.options.get(CONF_ELECTRICITY_RATE_ENTITY) or ""
+        elec_rate_currency = (entry.options.get(CONF_ELECTRICITY_RATE_CURRENCY) or "").strip().upper()
+        if elec_rate_entity and elec_rate_currency and len(elec_rate_currency) == 3:
+            _LOGGER.info(
+                "Electricity rate push enabled: entity=%s, currency=%s",
+                elec_rate_entity, elec_rate_currency,
+            )
+            # Track the last successfully pushed value to avoid duplicates
+            last_pushed = {"rate": None}
+
+            async def _push_rate(rate_value: float):
+                """Push the electricity rate to EVConduit."""
+                if rate_value == last_pushed["rate"]:
+                    _LOGGER.debug("Electricity rate unchanged (%.4f), skipping push", rate_value)
+                    return
+                result = await client.async_push_electricity_rate(rate_value, elec_rate_currency)
+                if result:
+                    last_pushed["rate"] = rate_value
+                    _LOGGER.info("Pushed electricity rate: %.4f %s", rate_value, elec_rate_currency)
+
+            async def _read_and_push_rate():
+                """Read rate from entity and push it."""
+                state = hass.states.get(elec_rate_entity)
+                if state is None or state.state in ("unknown", "unavailable"):
+                    return
+                try:
+                    rate_value = float(state.state)
+                    if rate_value > 0:
+                        await _push_rate(rate_value)
+                except (ValueError, TypeError):
+                    _LOGGER.debug("Invalid electricity rate value: %s", state.state)
+
+            # Push on state change
+            async def _on_rate_change(event):
+                """Handle state change of the electricity rate entity."""
+                new_state = event.data.get("new_state")
+                if new_state is None or new_state.state in ("unknown", "unavailable"):
+                    return
+                try:
+                    rate_value = float(new_state.state)
+                    if rate_value > 0:
+                        await _push_rate(rate_value)
+                except (ValueError, TypeError):
+                    _LOGGER.debug("Invalid electricity rate value on change: %s", new_state.state)
+
+            unsub_rate_listener = async_track_state_change_event(
+                hass, [elec_rate_entity], _on_rate_change
+            )
+            hass.data[DOMAIN][f"{entry.entry_id}_rate_unsub"] = unsub_rate_listener
+
+            # Periodic push every 5 minutes as backup
+            async def _periodic_rate_push(_now):
+                """Periodically push electricity rate as a backup."""
+                await _read_and_push_rate()
+
+            unsub_rate_timer = async_track_time_interval(
+                hass, _periodic_rate_push, timedelta(minutes=5)
+            )
+            hass.data[DOMAIN][f"{entry.entry_id}_rate_timer_unsub"] = unsub_rate_timer
+
+            # Push current value immediately at startup
+            hass.async_create_task(_read_and_push_rate())
+            _LOGGER.debug("Electricity rate push listeners set up")
+        elif elec_rate_entity:
+            _LOGGER.warning(
+                "Electricity rate entity configured (%s) but currency is missing or invalid (%s). "
+                "Set a 3-letter currency code (e.g. AUD, SEK, EUR) in options.",
+                elec_rate_entity, elec_rate_currency,
+            )
+
         # 3) Register global services (once for the domain, dispatched by vehicle_id)
         if not hass.services.has_service(DOMAIN, "set_charging"):
             schema = vol.Schema({
@@ -397,10 +471,19 @@ async def async_unload_entry(hass, entry) -> bool:
         except Exception as e:
             _LOGGER.warning("Failed to unregister webhook from EVConduit: %s", e)
 
-    hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
-    hass.data.get(DOMAIN, {}).pop(f"{entry.entry_id}_vehicle", None)
-    hass.data.get(DOMAIN, {}).pop(f"{entry.entry_id}_abrp", None)
-    hass.data.get(DOMAIN, {}).pop(f"{entry.entry_id}_client", None)
+    # Clean up electricity rate listeners
+    domain_data = hass.data.get(DOMAIN, {})
+    rate_unsub = domain_data.pop(f"{entry.entry_id}_rate_unsub", None)
+    if rate_unsub:
+        rate_unsub()
+    rate_timer_unsub = domain_data.pop(f"{entry.entry_id}_rate_timer_unsub", None)
+    if rate_timer_unsub:
+        rate_timer_unsub()
+
+    domain_data.pop(entry.entry_id, None)
+    domain_data.pop(f"{entry.entry_id}_vehicle", None)
+    domain_data.pop(f"{entry.entry_id}_abrp", None)
+    domain_data.pop(f"{entry.entry_id}_client", None)
     return unload_ok
 
 # Lägg till denna!

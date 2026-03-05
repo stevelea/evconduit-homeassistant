@@ -7,6 +7,8 @@ CONF_VEHICLE_ID  = "vehicle_id"
 CONF_UPDATE_INTERVAL = "update_interval"
 CONF_ABRP_TOKEN = "abrp_token"
 CONF_ODOMETER_ENTITY = "odometer_entity"
+CONF_ELECTRICITY_RATE_ENTITY = "electricity_rate_entity"
+CONF_ELECTRICITY_RATE_CURRENCY = "electricity_rate_currency"
 DEFAULT_UPDATE_INTERVAL = 4
 
 ABRP_API_URL = "https://api.iternio.com/1/tlm/send"

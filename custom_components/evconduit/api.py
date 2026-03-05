@@ -225,6 +225,35 @@ class EVConduitClient:
             _LOGGER.exception(f"[EVConduitClient] Exception unregistering webhook: {err}")
         return False
 
+    async def async_push_electricity_rate(self, cost_per_kwh: float, currency: str) -> dict | None:
+        """
+        Push the current electricity rate to EVConduit.
+        Returns the response dict if successful, None otherwise.
+        """
+        url = f"{self.base_url}/api/ha/electricity-rate"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {"cost_per_kwh": cost_per_kwh, "currency": currency}
+        _LOGGER.debug(f"[EVConduitClient] POST electricity rate: {url} payload={payload}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload, headers=headers, timeout=15) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        _LOGGER.info(f"[EVConduitClient] Electricity rate pushed: {cost_per_kwh} {currency}")
+                        return data
+                    else:
+                        text = await resp.text()
+                        _LOGGER.error(f"[EVConduitClient] Electricity rate push failed HTTP {resp.status}: {text}")
+                        return None
+        except (TimeoutError, aiohttp.ClientError) as err:
+            _LOGGER.warning(f"[EVConduitClient] Electricity rate push failed (network error): {err}")
+        except Exception as err:
+            _LOGGER.exception(f"[EVConduitClient] Exception pushing electricity rate: {err}")
+        return None
+
     async def async_update_odometer(self, odometer_km: float) -> dict | None:
         """
         Update the odometer reading for the latest charging session.

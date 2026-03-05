@@ -32,7 +32,9 @@
         "description": "Integrationseinstellungen konfigurieren.",
         "data": {
           "update_interval": "Aktualisierungsintervall (Minuten)",
-          "odometer_entity": "Kilometerzähler-Sensor (Auto-Update nach Laden)"
+          "odometer_entity": "Kilometerzähler-Sensor (Auto-Update nach Laden)",
+          "electricity_rate_entity": "Strompreis-Sensor (optional)",
+          "electricity_rate_currency": "Strompreis-Währung (z.B. EUR, CHF)"
         }
       }
     }

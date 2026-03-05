@@ -2,7 +2,11 @@ from homeassistant import config_entries
 from homeassistant.helpers.selector import EntitySelector, EntitySelectorConfig
 import voluptuous as vol
 import logging
-from .const import DOMAIN, CONF_API_KEY, CONF_VEHICLE_ID, CONF_UPDATE_INTERVAL, CONF_ENVIRONMENT, CONF_ABRP_TOKEN, CONF_ODOMETER_ENTITY, ENVIRONMENTS
+from .const import (
+    DOMAIN, CONF_API_KEY, CONF_VEHICLE_ID, CONF_UPDATE_INTERVAL,
+    CONF_ENVIRONMENT, CONF_ABRP_TOKEN, CONF_ODOMETER_ENTITY,
+    CONF_ELECTRICITY_RATE_ENTITY, CONF_ELECTRICITY_RATE_CURRENCY, ENVIRONMENTS,
+)
 
 from .api import EVConduitClient
 
@@ -189,8 +193,13 @@ class EVConduitOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_ODOMETER_ENTITY,
                     description={"suggested_value": self.config_entry.options.get(CONF_ODOMETER_ENTITY) or None},
                 ): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                vol.Optional(
+                    CONF_ELECTRICITY_RATE_ENTITY,
+                    description={"suggested_value": self.config_entry.options.get(CONF_ELECTRICITY_RATE_ENTITY) or None},
+                ): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                vol.Optional(
+                    CONF_ELECTRICITY_RATE_CURRENCY,
+                    default=self.config_entry.options.get(CONF_ELECTRICITY_RATE_CURRENCY, ""),
+                ): str,
             }),
-            description_placeholders={
-                "odometer_help": "Select your OBD odometer sensor to auto-update charging sessions"
-            },
         )
