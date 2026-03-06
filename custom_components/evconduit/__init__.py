@@ -2,12 +2,14 @@
 
 import asyncio
 import logging
-from datetime import timedelta
+import time
+from datetime import datetime, timedelta, timezone
 import voluptuous as vol
 from aiohttp import web
 
 from homeassistant.core import callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.storage import Store
 from homeassistant.components.webhook import async_register, async_unregister
 
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
@@ -16,7 +18,8 @@ from .const import (
     DOMAIN, ENVIRONMENTS,
     CONF_API_KEY, CONF_ENVIRONMENT, CONF_VEHICLE_ID, CONF_UPDATE_INTERVAL,
     CONF_ABRP_TOKEN, CONF_ODOMETER_ENTITY, CONF_ELECTRICITY_RATE_ENTITY,
-    CONF_ELECTRICITY_RATE_CURRENCY, DEFAULT_UPDATE_INTERVAL,
+    CONF_ELECTRICITY_RATE_CURRENCY, CONF_CHARGING_HISTORY,
+    DEFAULT_UPDATE_INTERVAL, CHARGING_HISTORY_SYNC_INTERVAL,
 )
 from .api import EVConduitClient
 from .abrp import ABRPClient
@@ -295,6 +298,86 @@ async def async_setup_entry(hass, entry) -> bool:
                 elec_rate_entity, elec_rate_currency,
             )
 
+        # 2e) Set up charging history sync if enabled
+        charging_history_enabled = entry.options.get(CONF_CHARGING_HISTORY, False)
+        if charging_history_enabled:
+            _LOGGER.info("Charging history sync enabled for entry %s", entry.entry_id)
+            store = Store(hass, 1, f"{DOMAIN}.charging_sessions.{entry.entry_id}")
+            store_data = await store.async_load() or {"last_sync": None, "sessions": []}
+            # Mutable state for sync
+            ch_state = {
+                "store": store,
+                "data": store_data,
+                "last_sync_time": 0.0,  # monotonic timestamp of last API call
+            }
+            hass.data[DOMAIN][f"{entry.entry_id}_ch_store"] = ch_state
+
+            async def _sync_charging_history(force: bool = False):
+                """Incremental sync of charging sessions from backend."""
+                now_mono = time.monotonic()
+                if not force and (now_mono - ch_state["last_sync_time"]) < CHARGING_HISTORY_SYNC_INTERVAL:
+                    return
+
+                last_sync = ch_state["data"].get("last_sync")
+                existing_ids = {s["session_id"] for s in ch_state["data"]["sessions"]}
+                all_new = []
+
+                # Paginate through all new sessions
+                since = last_sync
+                while True:
+                    result = await client.async_get_charging_sessions(since=since, limit=50)
+                    if not result or not result.get("sessions"):
+                        break
+                    batch = result["sessions"]
+                    for s in batch:
+                        if s["session_id"] not in existing_ids:
+                            all_new.append(s)
+                            existing_ids.add(s["session_id"])
+                    if not result.get("has_more"):
+                        break
+                    # Use the last session's start_time as the next `since`
+                    since = batch[-1]["start_time"]
+
+                if all_new:
+                    ch_state["data"]["sessions"].extend(all_new)
+                    _LOGGER.info("Charging history: synced %d new sessions", len(all_new))
+
+                # Update last_sync to now
+                ch_state["data"]["last_sync"] = datetime.now(timezone.utc).isoformat()
+                ch_state["last_sync_time"] = now_mono
+                await store.async_save(ch_state["data"])
+
+                # Notify charging history sensors
+                ch_coord = hass.data[DOMAIN].get(f"{entry.entry_id}_ch_coordinator")
+                if ch_coord:
+                    ch_coord.async_set_updated_data(ch_state["data"])
+
+            # Create a lightweight coordinator for charging history sensors
+            async def _ch_update():
+                return ch_state["data"]
+
+            ch_coordinator = DataUpdateCoordinator(
+                hass, _LOGGER,
+                name=f"{DOMAIN} charging history",
+                update_method=_ch_update,
+                update_interval=None,  # Manual updates only
+            )
+            ch_coordinator.data = ch_state["data"]
+            hass.data[DOMAIN][f"{entry.entry_id}_ch_coordinator"] = ch_coordinator
+
+            # Sync on vehicle coordinator updates (throttled to 15 min)
+            @callback
+            def _on_vehicle_update():
+                hass.async_create_task(_sync_charging_history())
+
+            vehicle_coord.async_add_listener(_on_vehicle_update)
+
+            # Store the sync function for the service
+            hass.data[DOMAIN][f"{entry.entry_id}_ch_sync"] = _sync_charging_history
+
+            # Initial sync
+            hass.async_create_task(_sync_charging_history(force=True))
+
         # 3) Register global services (once for the domain, dispatched by vehicle_id)
         if not hass.services.has_service(DOMAIN, "set_charging"):
             schema = vol.Schema({
@@ -409,6 +492,30 @@ async def async_setup_entry(hass, entry) -> bool:
             hass.services.async_register(DOMAIN, "send_abrp_telemetry", _handle_send_abrp, schema=abrp_schema)
             _LOGGER.debug("Service send_abrp_telemetry registered (global)")
 
+        if not hass.services.has_service(DOMAIN, "sync_charging_history"):
+            async def _handle_sync_charging_history(call):
+                """Trigger an immediate incremental charging history sync."""
+                target_vehicle = call.data.get("vehicle_id") if call.data else None
+                domain_data = hass.data.get(DOMAIN, {})
+                for e in hass.config_entries.async_entries(DOMAIN):
+                    if target_vehicle and e.data.get(CONF_VEHICLE_ID) != target_vehicle:
+                        continue
+                    sync_fn = domain_data.get(f"{e.entry_id}_ch_sync")
+                    if not sync_fn:
+                        _LOGGER.debug("No charging history sync configured for entry %s", e.entry_id)
+                        continue
+                    try:
+                        await sync_fn(force=True)
+                        _LOGGER.info("Charging history sync triggered for vehicle %s", e.data.get(CONF_VEHICLE_ID))
+                    except Exception:
+                        _LOGGER.exception("Error in sync_charging_history for vehicle %s", e.data.get(CONF_VEHICLE_ID))
+                    if target_vehicle:
+                        break
+
+            sync_schema = vol.Schema({vol.Optional("vehicle_id"): str})
+            hass.services.async_register(DOMAIN, "sync_charging_history", _handle_sync_charging_history, schema=sync_schema)
+            _LOGGER.debug("Service sync_charging_history registered (global)")
+
         # 4) Register webhook under /api/webhook/{entry_id}
         webhook_id = entry.entry_id
         async_register(
@@ -456,7 +563,7 @@ async def async_unload_entry(hass, entry) -> bool:
         if e.entry_id != entry.entry_id
     )
     if remaining == 0:
-        for svc in ("set_charging", "update_odometer", "send_abrp_telemetry"):
+        for svc in ("set_charging", "update_odometer", "send_abrp_telemetry", "sync_charging_history"):
             if hass.services.has_service(DOMAIN, svc):
                 hass.services.async_remove(DOMAIN, svc)
         _LOGGER.debug("All services removed (last entry unloaded)")
@@ -482,6 +589,9 @@ async def async_unload_entry(hass, entry) -> bool:
     domain_data.pop(f"{entry.entry_id}_vehicle", None)
     domain_data.pop(f"{entry.entry_id}_abrp", None)
     domain_data.pop(f"{entry.entry_id}_client", None)
+    domain_data.pop(f"{entry.entry_id}_ch_store", None)
+    domain_data.pop(f"{entry.entry_id}_ch_coordinator", None)
+    domain_data.pop(f"{entry.entry_id}_ch_sync", None)
     return unload_ok
 
 # Lägg till denna!

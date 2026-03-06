@@ -4,8 +4,12 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
-from .const import DOMAIN, ICONS, USER_FIELDS, VEHICLE_FIELDS, WEBHOOK_FIELDS
-from datetime import datetime
+from .const import (
+    DOMAIN, ICONS, USER_FIELDS, VEHICLE_FIELDS, WEBHOOK_FIELDS,
+    CONF_CHARGING_HISTORY, CHARGING_HISTORY_LAST_SESSION_FIELDS,
+    CHARGING_HISTORY_MONTHLY_FIELDS,
+)
+from datetime import datetime, timedelta, timezone
 import logging
 _LOGGER = logging.getLogger(__name__)
 
@@ -101,6 +105,23 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     for field, (label, unit) in WEBHOOK_FIELDS.items():
         entities.append(EVConduitWebhookIdSensor(user_coordinator, entry, field, label, unit, vehicle_coordinator))
+
+    # Charging history sensors (only if enabled in options)
+    charging_history_enabled = entry.options.get(CONF_CHARGING_HISTORY, False)
+    ch_coordinator = hass.data[DOMAIN].get(f"{entry.entry_id}_ch_coordinator")
+    if charging_history_enabled and ch_coordinator:
+        for field, (label, unit) in CHARGING_HISTORY_LAST_SESSION_FIELDS.items():
+            entities.append(
+                EVConduitChargingHistorySensor(
+                    ch_coordinator, entry, field, label, unit, vehicle_coordinator
+                )
+            )
+        for field, (label, unit) in CHARGING_HISTORY_MONTHLY_FIELDS.items():
+            entities.append(
+                EVConduitChargingHistorySensor(
+                    ch_coordinator, entry, field, label, unit, vehicle_coordinator
+                )
+            )
 
     async_add_entities(entities)
 
@@ -326,3 +347,135 @@ class EVConduitLastSeenLocalSensor(CoordinatorEntity, SensorEntity):
     @property
     def unique_id(self):
         return f"{DOMAIN}-{self._entry.entry_id}-vehicle-lastSeenLocal"
+
+
+class EVConduitChargingHistorySensor(CoordinatorEntity, SensorEntity):
+    """Sensor for charging history data (last session and monthly aggregates)."""
+
+    def __init__(self, coordinator, entry, field, name, unit, vehicle_coordinator=None):
+        super().__init__(coordinator)
+        self._entry = entry
+        self._field = field
+        self._name = name
+        self._unit = unit
+        self._vehicle_coordinator = vehicle_coordinator
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        vdata = self._vehicle_coordinator.data if self._vehicle_coordinator else None
+        return _build_device_info(self._entry, vdata)
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def icon(self):
+        return ICONS.get(self._field)
+
+    @property
+    def unique_id(self):
+        return f"{DOMAIN}-{self._entry.entry_id}-ch-{self._field}"
+
+    @property
+    def unit_of_measurement(self):
+        return self._unit
+
+    def _get_sessions(self) -> list:
+        data = self.coordinator.data or {}
+        return data.get("sessions", [])
+
+    def _get_last_session(self) -> dict | None:
+        sessions = self._get_sessions()
+        if not sessions:
+            return None
+        # Sessions are appended oldest-first, so last element is most recent
+        return sessions[-1]
+
+    def _get_30_day_sessions(self) -> list:
+        sessions = self._get_sessions()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        return [s for s in sessions if (s.get("start_time") or "") >= cutoff]
+
+    @property
+    def state(self):
+        if self._field == "last_charge_energy":
+            s = self._get_last_session()
+            if not s:
+                return None
+            val = s.get("energy_added_kwh")
+            return round(val, 2) if val is not None else None
+
+        if self._field == "last_charge_cost":
+            s = self._get_last_session()
+            if not s:
+                return None
+            val = s.get("total_cost")
+            return round(val, 2) if val is not None else None
+
+        if self._field == "last_charge_location":
+            s = self._get_last_session()
+            if not s:
+                return None
+            return s.get("station_name") or "Unknown"
+
+        if self._field == "last_charge_date":
+            s = self._get_last_session()
+            if not s:
+                return None
+            return s.get("start_time")
+
+        if self._field == "last_charge_duration":
+            s = self._get_last_session()
+            if not s:
+                return None
+            start = s.get("start_time")
+            end = s.get("end_time")
+            if not start or not end:
+                return None
+            try:
+                st = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                et = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                return round((et - st).total_seconds() / 60, 1)
+            except (ValueError, TypeError):
+                return None
+
+        if self._field == "monthly_charge_energy":
+            sessions = self._get_30_day_sessions()
+            total = sum(s.get("energy_added_kwh") or 0 for s in sessions)
+            return round(total, 2)
+
+        if self._field == "monthly_charge_cost":
+            sessions = self._get_30_day_sessions()
+            total = sum(s.get("total_cost") or 0 for s in sessions)
+            return round(total, 2)
+
+        if self._field == "monthly_charge_count":
+            return len(self._get_30_day_sessions())
+
+        return None
+
+    @property
+    def extra_state_attributes(self):
+        attrs = {}
+        if self._field == "last_charge_cost":
+            s = self._get_last_session()
+            if s:
+                attrs["currency"] = s.get("currency")
+                attrs["cost_per_kwh"] = s.get("cost_per_kwh")
+        elif self._field == "last_charge_energy":
+            s = self._get_last_session()
+            if s:
+                attrs["battery_start"] = s.get("battery_level_start")
+                attrs["battery_end"] = s.get("battery_level_end")
+        elif self._field == "last_charge_location":
+            s = self._get_last_session()
+            if s:
+                attrs["latitude"] = s.get("location_lat")
+                attrs["longitude"] = s.get("location_lon")
+        elif self._field == "monthly_charge_cost":
+            sessions = self._get_30_day_sessions()
+            if sessions:
+                currencies = {s.get("currency") for s in sessions if s.get("currency")}
+                attrs["currencies"] = list(currencies)
+        return attrs

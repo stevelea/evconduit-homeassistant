@@ -9,7 +9,11 @@ CONF_ABRP_TOKEN = "abrp_token"
 CONF_ODOMETER_ENTITY = "odometer_entity"
 CONF_ELECTRICITY_RATE_ENTITY = "electricity_rate_entity"
 CONF_ELECTRICITY_RATE_CURRENCY = "electricity_rate_currency"
+CONF_CHARGING_HISTORY = "charging_history"
 DEFAULT_UPDATE_INTERVAL = 4
+
+# Minimum seconds between charging history syncs (15 minutes)
+CHARGING_HISTORY_SYNC_INTERVAL = 900
 
 ABRP_API_URL = "https://api.iternio.com/1/tlm/send"
 
@@ -69,6 +73,15 @@ ICONS = {
     "abrp_extra.tire_pressure_fr": "mdi:car-tire-alert",
     "abrp_extra.tire_pressure_rl": "mdi:car-tire-alert",
     "abrp_extra.tire_pressure_rr": "mdi:car-tire-alert",
+    # Charging history sensors
+    "last_charge_energy": "mdi:lightning-bolt",
+    "last_charge_cost": "mdi:currency-usd",
+    "last_charge_location": "mdi:map-marker",
+    "last_charge_date": "mdi:calendar-clock",
+    "last_charge_duration": "mdi:timer-outline",
+    "monthly_charge_energy": "mdi:lightning-bolt",
+    "monthly_charge_cost": "mdi:currency-usd",
+    "monthly_charge_count": "mdi:counter",
 }
 
 USER_FIELDS = {
@@ -124,4 +137,18 @@ VEHICLE_FIELDS = {
     "abrp_extra.tire_pressure_fr": ("Tire Pressure FR", "bar"),
     "abrp_extra.tire_pressure_rl": ("Tire Pressure RL", "bar"),
     "abrp_extra.tire_pressure_rr": ("Tire Pressure RR", "bar"),
+}
+
+CHARGING_HISTORY_LAST_SESSION_FIELDS = {
+    "last_charge_energy": ("Last Charge Energy", "kWh"),
+    "last_charge_cost": ("Last Charge Cost", None),
+    "last_charge_location": ("Last Charge Location", None),
+    "last_charge_date": ("Last Charge Date", None),
+    "last_charge_duration": ("Last Charge Duration", "min"),
+}
+
+CHARGING_HISTORY_MONTHLY_FIELDS = {
+    "monthly_charge_energy": ("Monthly Charge Energy", "kWh"),
+    "monthly_charge_cost": ("Monthly Charge Cost", None),
+    "monthly_charge_count": ("Monthly Charge Count", "sessions"),
 }

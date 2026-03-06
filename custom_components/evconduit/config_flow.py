@@ -5,7 +5,8 @@ import logging
 from .const import (
     DOMAIN, CONF_API_KEY, CONF_VEHICLE_ID, CONF_UPDATE_INTERVAL,
     CONF_ENVIRONMENT, CONF_ABRP_TOKEN, CONF_ODOMETER_ENTITY,
-    CONF_ELECTRICITY_RATE_ENTITY, CONF_ELECTRICITY_RATE_CURRENCY, ENVIRONMENTS,
+    CONF_ELECTRICITY_RATE_ENTITY, CONF_ELECTRICITY_RATE_CURRENCY,
+    CONF_CHARGING_HISTORY, ENVIRONMENTS,
 )
 
 from .api import EVConduitClient
@@ -203,5 +204,9 @@ class EVConduitOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_ELECTRICITY_RATE_CURRENCY, ""
                     ) or self.hass.config.currency or "",
                 ): str,
+                vol.Optional(
+                    CONF_CHARGING_HISTORY,
+                    default=self.config_entry.options.get(CONF_CHARGING_HISTORY, False),
+                ): bool,
             }),
         )

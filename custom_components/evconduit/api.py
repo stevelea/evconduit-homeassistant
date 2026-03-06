@@ -254,6 +254,34 @@ class EVConduitClient:
             _LOGGER.exception(f"[EVConduitClient] Exception pushing electricity rate: {err}")
         return None
 
+    async def async_get_charging_sessions(self, since: str | None = None, limit: int = 50) -> dict | None:
+        """
+        Fetch charging sessions for incremental sync.
+        Returns dict with 'sessions' list and 'has_more' bool, or None on error.
+        """
+        params = {"limit": limit}
+        if since:
+            params["since"] = since
+        url = f"{self.base_url}/api/ha/charging/sessions"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        _LOGGER.debug("[EVConduitClient] GET charging sessions: %s params=%s", url, params)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, params=params, timeout=30) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        _LOGGER.debug("[EVConduitClient] Charging sessions: %d returned", len(data.get("sessions", [])))
+                        return data
+                    text = await resp.text()
+                    _LOGGER.error("[EVConduitClient] Charging sessions fetch failed HTTP %s: %s", resp.status, text)
+        except (TimeoutError, aiohttp.ClientError) as err:
+            _LOGGER.warning("[EVConduitClient] Charging sessions request failed (network error): %s", err)
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:
+            _LOGGER.exception("[EVConduitClient] Exception fetching charging sessions: %s", err)
+        return None
+
     async def async_update_odometer(self, odometer_km: float) -> dict | None:
         """
         Update the odometer reading for the latest charging session.
