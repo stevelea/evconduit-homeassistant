@@ -359,8 +359,13 @@ async def async_setup_entry(hass, entry) -> bool:
                     else:
                         _LOGGER.warning("---- [EVConduit] No new sessions to sync")
 
-                    # Update last_sync to now
-                    ch_state["data"]["last_sync"] = datetime.now(timezone.utc).isoformat()
+                    # Only update last_sync if we actually have sessions stored
+                    # (prevents locking out future full syncs after backend errors)
+                    if ch_state["data"]["sessions"]:
+                        ch_state["data"]["last_sync"] = datetime.now(timezone.utc).isoformat()
+                    else:
+                        ch_state["data"]["last_sync"] = None
+                        _LOGGER.warning("---- [EVConduit] No sessions stored, keeping last_sync=None for next attempt")
                     ch_state["last_sync_time"] = now_mono
                     await store.async_save(ch_state["data"])
 
