@@ -318,43 +318,55 @@ async def async_setup_entry(hass, entry) -> bool:
 
             async def _sync_charging_history(force: bool = False):
                 """Incremental sync of charging sessions from backend."""
-                now_mono = time.monotonic()
-                if not force and (now_mono - ch_state["last_sync_time"]) < CHARGING_HISTORY_SYNC_INTERVAL:
-                    return
+                _LOGGER.warning("---- [EVConduit] _sync_charging_history called (force=%s)", force)
+                try:
+                    now_mono = time.monotonic()
+                    if not force and (now_mono - ch_state["last_sync_time"]) < CHARGING_HISTORY_SYNC_INTERVAL:
+                        _LOGGER.warning("---- [EVConduit] Sync throttled, skipping")
+                        return
 
-                last_sync = ch_state["data"].get("last_sync")
-                existing_ids = {s["session_id"] for s in ch_state["data"]["sessions"]}
-                all_new = []
+                    last_sync = ch_state["data"].get("last_sync")
+                    existing_ids = {s["session_id"] for s in ch_state["data"]["sessions"]}
+                    all_new = []
 
-                # Paginate through all new sessions
-                since = last_sync
-                while True:
-                    result = await client.async_get_charging_sessions(since=since, limit=50)
-                    if not result or not result.get("sessions"):
-                        break
-                    batch = result["sessions"]
-                    for s in batch:
-                        if s["session_id"] not in existing_ids:
-                            all_new.append(s)
-                            existing_ids.add(s["session_id"])
-                    if not result.get("has_more"):
-                        break
-                    # Use the last session's start_time as the next `since`
-                    since = batch[-1]["start_time"]
+                    # Paginate through all new sessions
+                    since = last_sync
+                    _LOGGER.warning("---- [EVConduit] Fetching sessions since=%s", since)
+                    while True:
+                        result = await client.async_get_charging_sessions(since=since, limit=50)
+                        _LOGGER.warning("---- [EVConduit] API result: %s", result is not None)
+                        if not result or not result.get("sessions"):
+                            _LOGGER.warning("---- [EVConduit] No sessions in result, breaking")
+                            break
+                        batch = result["sessions"]
+                        _LOGGER.warning("---- [EVConduit] Got %d sessions in batch", len(batch))
+                        for s in batch:
+                            if s["session_id"] not in existing_ids:
+                                all_new.append(s)
+                                existing_ids.add(s["session_id"])
+                        if not result.get("has_more"):
+                            break
+                        # Use the last session's start_time as the next `since`
+                        since = batch[-1]["start_time"]
 
-                if all_new:
-                    ch_state["data"]["sessions"].extend(all_new)
-                    _LOGGER.warning("---- [EVConduit] Charging history: synced %d new sessions", len(all_new))
+                    if all_new:
+                        ch_state["data"]["sessions"].extend(all_new)
+                        _LOGGER.warning("---- [EVConduit] Charging history: synced %d new sessions", len(all_new))
+                    else:
+                        _LOGGER.warning("---- [EVConduit] No new sessions to sync")
 
-                # Update last_sync to now
-                ch_state["data"]["last_sync"] = datetime.now(timezone.utc).isoformat()
-                ch_state["last_sync_time"] = now_mono
-                await store.async_save(ch_state["data"])
+                    # Update last_sync to now
+                    ch_state["data"]["last_sync"] = datetime.now(timezone.utc).isoformat()
+                    ch_state["last_sync_time"] = now_mono
+                    await store.async_save(ch_state["data"])
 
-                # Notify charging history sensors
-                ch_coord = hass.data[DOMAIN].get(f"{entry.entry_id}_ch_coordinator")
-                if ch_coord:
-                    ch_coord.async_set_updated_data(ch_state["data"])
+                    # Notify charging history sensors
+                    ch_coord = hass.data[DOMAIN].get(f"{entry.entry_id}_ch_coordinator")
+                    if ch_coord:
+                        ch_coord.async_set_updated_data(ch_state["data"])
+                    _LOGGER.warning("---- [EVConduit] Sync complete, %d total sessions stored", len(ch_state["data"]["sessions"]))
+                except Exception as exc:
+                    _LOGGER.warning("---- [EVConduit] Sync FAILED: %s", exc, exc_info=True)
 
             # Create a lightweight coordinator for charging history sensors
             async def _ch_update():
