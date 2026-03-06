@@ -308,6 +308,10 @@ async def async_setup_entry(hass, entry) -> bool:
             _LOGGER.warning("---- [EVConduit] Charging history sync enabled for entry %s", entry.entry_id)
             store = Store(hass, 1, f"{DOMAIN}.charging_sessions.{entry.entry_id}")
             store_data = await store.async_load() or {"last_sync": None, "sessions": []}
+            # Safety: if last_sync is set but no sessions, reset to force full sync
+            if store_data.get("last_sync") and not store_data.get("sessions"):
+                _LOGGER.warning("---- [EVConduit] Store has last_sync but no sessions, resetting for full sync")
+                store_data["last_sync"] = None
             # Mutable state for sync
             ch_state = {
                 "store": store,
