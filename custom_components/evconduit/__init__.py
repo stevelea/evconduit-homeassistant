@@ -362,7 +362,8 @@ async def async_setup_entry(hass, entry) -> bool:
                 update_method=_ch_update,
                 update_interval=None,  # Manual updates only
             )
-            ch_coordinator.data = ch_state["data"]
+            # Do a first refresh so CoordinatorEntity considers the data valid
+            await ch_coordinator.async_config_entry_first_refresh()
             hass.data[DOMAIN][f"{entry.entry_id}_ch_coordinator"] = ch_coordinator
 
             # Sync on vehicle coordinator updates (throttled to 15 min)
@@ -375,8 +376,14 @@ async def async_setup_entry(hass, entry) -> bool:
             # Store the sync function for the service
             hass.data[DOMAIN][f"{entry.entry_id}_ch_sync"] = _sync_charging_history
 
-            # Initial sync
-            hass.async_create_task(_sync_charging_history(force=True))
+            # Initial sync — runs in background, updates coordinator when done
+            async def _initial_sync():
+                try:
+                    await _sync_charging_history(force=True)
+                except Exception:
+                    _LOGGER.exception("Error during initial charging history sync")
+
+            hass.async_create_task(_initial_sync())
 
         # 3) Register global services (once for the domain, dispatched by vehicle_id)
         if not hass.services.has_service(DOMAIN, "set_charging"):
