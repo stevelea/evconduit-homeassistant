@@ -300,12 +300,12 @@ async def async_setup_entry(hass, entry) -> bool:
 
         # 2e) Set up charging history sync if enabled
         charging_history_enabled = entry.options.get(CONF_CHARGING_HISTORY, False)
-        _LOGGER.info(
-            "Charging history option: %s (all options: %s)",
+        _LOGGER.warning(
+            "---- [EVConduit] Charging history option: %s (all options: %s)",
             charging_history_enabled, dict(entry.options),
         )
         if charging_history_enabled:
-            _LOGGER.info("Charging history sync enabled for entry %s", entry.entry_id)
+            _LOGGER.warning("---- [EVConduit] Charging history sync enabled for entry %s", entry.entry_id)
             store = Store(hass, 1, f"{DOMAIN}.charging_sessions.{entry.entry_id}")
             store_data = await store.async_load() or {"last_sync": None, "sessions": []}
             # Mutable state for sync
@@ -344,7 +344,7 @@ async def async_setup_entry(hass, entry) -> bool:
 
                 if all_new:
                     ch_state["data"]["sessions"].extend(all_new)
-                    _LOGGER.info("Charging history: synced %d new sessions", len(all_new))
+                    _LOGGER.warning("---- [EVConduit] Charging history: synced %d new sessions", len(all_new))
 
                 # Update last_sync to now
                 ch_state["data"]["last_sync"] = datetime.now(timezone.utc).isoformat()
