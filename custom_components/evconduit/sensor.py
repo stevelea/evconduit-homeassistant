@@ -478,4 +478,35 @@ class EVConduitChargingHistorySensor(CoordinatorEntity, SensorEntity):
             if sessions:
                 currencies = {s.get("currency") for s in sessions if s.get("currency")}
                 attrs["currencies"] = list(currencies)
+        elif self._field == "monthly_charge_count":
+            all_sessions = self._get_sessions()
+            attrs["total_sessions"] = len(all_sessions)
+            # Last 20 sessions (most recent first) for Lovelace cards
+            recent = list(reversed(all_sessions[-20:]))
+            attrs["recent_sessions"] = [
+                {
+                    "date": s.get("start_time"),
+                    "energy_kwh": round(s.get("energy_added_kwh") or 0, 2),
+                    "cost": round(s.get("total_cost") or 0, 2),
+                    "currency": s.get("currency"),
+                    "location": s.get("station_name") or "Unknown",
+                    "battery_start": s.get("battery_level_start"),
+                    "battery_end": s.get("battery_level_end"),
+                    "duration_min": self._calc_duration(s),
+                }
+                for s in recent
+            ]
         return attrs
+
+    @staticmethod
+    def _calc_duration(session: dict) -> float | None:
+        start = session.get("start_time")
+        end = session.get("end_time")
+        if not start or not end:
+            return None
+        try:
+            st = datetime.fromisoformat(start.replace("Z", "+00:00"))
+            et = datetime.fromisoformat(end.replace("Z", "+00:00"))
+            return round((et - st).total_seconds() / 60, 1)
+        except (ValueError, TypeError):
+            return None
