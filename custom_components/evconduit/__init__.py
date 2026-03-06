@@ -464,14 +464,10 @@ async def async_unload_entry(hass, entry) -> bool:
     async_unregister(hass, entry.entry_id)
     _LOGGER.debug("Webhook unregistered for entry %s", entry.entry_id)
 
-    # Unregister webhook from EVConduit backend
-    client = hass.data.get(DOMAIN, {}).get(f"{entry.entry_id}_client")
-    if client:
-        try:
-            await client.async_unregister_webhook()
-            _LOGGER.info("Webhook unregistered from EVConduit backend")
-        except Exception as e:
-            _LOGGER.warning("Failed to unregister webhook from EVConduit: %s", e)
+    # Note: We intentionally do NOT unregister the webhook from the EVConduit backend
+    # on unload/reboot. async_setup_entry always re-registers with the current URL,
+    # so unregistering just creates a window where pushes fail. If the user truly
+    # removes the integration, they can clear webhook settings from the profile page.
 
     # Clean up electricity rate listeners
     domain_data = hass.data.get(DOMAIN, {})
