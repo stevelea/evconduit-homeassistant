@@ -359,10 +359,15 @@ async def async_setup_entry(hass, entry) -> bool:
                     else:
                         _LOGGER.warning("---- [EVConduit] No new sessions to sync")
 
-                    # Only update last_sync if we actually have sessions stored
-                    # (prevents locking out future full syncs after backend errors)
+                    # Update last_sync to the latest session's created_at timestamp
+                    # (not datetime.now(), because sessions are created when charging
+                    # ends and their start_time can be hours before created_at)
                     if ch_state["data"]["sessions"]:
-                        ch_state["data"]["last_sync"] = datetime.now(timezone.utc).isoformat()
+                        latest_created = max(
+                            s.get("created_at", s.get("start_time", ""))
+                            for s in ch_state["data"]["sessions"]
+                        )
+                        ch_state["data"]["last_sync"] = latest_created or datetime.now(timezone.utc).isoformat()
                     else:
                         ch_state["data"]["last_sync"] = None
                         _LOGGER.warning("---- [EVConduit] No sessions stored, keeping last_sync=None for next attempt")
