@@ -282,6 +282,36 @@ class EVConduitClient:
             _LOGGER.exception("[EVConduitClient] Exception fetching charging sessions: %s", err)
         return None
 
+    async def async_post_charging_session(self, session_data: dict) -> dict | None:
+        """
+        Record a completed charging session.
+        vehicle_id is injected automatically from the configured entry.
+        """
+        url = f"{self.base_url}/api/ha/charging/sessions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {"vehicle_id": self.vehicle_id, **session_data}
+        _LOGGER.debug("[EVConduitClient] POST charging session: %s", url)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload, headers=headers, timeout=15) as resp:
+                    if resp.status in (200, 201):
+                        data = await resp.json()
+                        _LOGGER.info("[EVConduitClient] Charging session posted: %s", data)
+                        return data
+                    text = await resp.text()
+                    _LOGGER.error("[EVConduitClient] Post charging session failed HTTP %s: %s", resp.status, text)
+                    return None
+        except (TimeoutError, aiohttp.ClientError) as err:
+            _LOGGER.warning("[EVConduitClient] Post charging session failed (network): %s", err)
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:
+            _LOGGER.exception("[EVConduitClient] Exception posting charging session: %s", err)
+        return None
+
     async def async_update_odometer(self, odometer_km: float) -> dict | None:
         """
         Update the odometer reading for the latest charging session.

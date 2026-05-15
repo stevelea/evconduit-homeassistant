@@ -553,6 +553,46 @@ async def async_setup_entry(hass, entry) -> bool:
             hass.services.async_register(DOMAIN, "sync_charging_history", _handle_sync_charging_history, schema=sync_schema)
             _LOGGER.debug("Service sync_charging_history registered (global)")
 
+        # 2f) Register post_charging_session service
+        if not hass.services.has_service(DOMAIN, "post_charging_session"):
+            session_schema = vol.Schema({
+                vol.Required("start_time"): str,
+                vol.Required("end_time"): str,
+                vol.Optional("start_battery_level"): vol.Coerce(float),
+                vol.Optional("end_battery_level"): vol.Coerce(float),
+                vol.Optional("energy_added_kwh"): vol.Coerce(float),
+                vol.Optional("max_charge_rate_kw"): vol.Coerce(float),
+                vol.Optional("latitude"): vol.Coerce(float),
+                vol.Optional("longitude"): vol.Coerce(float),
+                vol.Optional("station_name"): str,
+                vol.Optional("cost_per_kwh"): vol.Coerce(float),
+                vol.Optional("total_cost"): vol.Coerce(float),
+                vol.Optional("currency"): str,
+                vol.Optional("odometer_km"): vol.Coerce(float),
+                vol.Optional("vehicle_id"): str,
+            })
+
+            async def _handle_post_session(call):
+                target_vehicle = call.data.get("vehicle_id")
+                session_data = {k: v for k, v in call.data.items() if k != "vehicle_id"}
+                domain_data = hass.data.get(DOMAIN, {})
+                for e in hass.config_entries.async_entries(DOMAIN):
+                    if target_vehicle and e.data.get(CONF_VEHICLE_ID) != target_vehicle:
+                        continue
+                    c = domain_data.get(f"{e.entry_id}_client")
+                    if not c:
+                        continue
+                    result = await c.async_post_charging_session(session_data)
+                    if result:
+                        _LOGGER.info("Charging session posted for vehicle %s: %s", e.data.get(CONF_VEHICLE_ID), result)
+                    else:
+                        _LOGGER.warning("Failed to post charging session for vehicle %s", e.data.get(CONF_VEHICLE_ID))
+                    if target_vehicle:
+                        break
+
+            hass.services.async_register(DOMAIN, "post_charging_session", _handle_post_session, schema=session_schema)
+            _LOGGER.debug("Service post_charging_session registered")
+
         # 4) Register webhook under /api/webhook/{entry_id}
         webhook_id = entry.entry_id
         async_register(
@@ -600,7 +640,7 @@ async def async_unload_entry(hass, entry) -> bool:
         if e.entry_id != entry.entry_id
     )
     if remaining == 0:
-        for svc in ("set_charging", "update_odometer", "send_abrp_telemetry", "sync_charging_history"):
+        for svc in ("set_charging", "update_odometer", "send_abrp_telemetry", "sync_charging_history", "post_charging_session"):
             if hass.services.has_service(DOMAIN, svc):
                 hass.services.async_remove(DOMAIN, svc)
         _LOGGER.debug("All services removed (last entry unloaded)")

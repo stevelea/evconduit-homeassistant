@@ -41,3 +41,77 @@ update_odometer:
 send_abrp_telemetry:
   name: Send ABRP Telemetry
   description: Force send current vehicle telemetry to A Better Route Planner. Requires ABRP token to be configured.
+
+post_charging_session:
+  name: Post Charging Session
+  description: Record a completed charging session with EVConduit. vehicle_id and API key are taken from the integration config automatically.
+  fields:
+    start_time:
+      name: Start Time
+      description: ISO 8601 timestamp when charging started.
+      required: true
+      example: "2026-05-15T18:30:00+10:00"
+      selector:
+        text:
+    end_time:
+      name: End Time
+      description: ISO 8601 timestamp when charging stopped.
+      required: true
+      example: "2026-05-15T20:45:00+10:00"
+      selector:
+        text:
+    start_battery_level:
+      name: Start Battery Level
+      description: Battery SOC (%) at session start.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+    end_battery_level:
+      name: End Battery Level
+      description: Battery SOC (%) at session end.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+    energy_added_kwh:
+      name: Energy Added (kWh)
+      description: Energy added during session. Auto-computed from battery delta when omitted.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 200
+          step: 0.01
+          unit_of_measurement: kWh
+    latitude:
+      name: Latitude
+      description: Charging location latitude. Used for OCM station lookup.
+      required: false
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: 0.000001
+    longitude:
+      name: Longitude
+      description: Charging location longitude. Used for OCM station lookup.
+      required: false
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: 0.000001
+    odometer_km:
+      name: Odometer (km)
+      description: Vehicle odometer reading at end of session.
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 1000000
+          unit_of_measurement: km
