@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file. Follows [Se
 
 ---
 
+## \[1.11.0] - 2026-08-27
+
+### Changed
+
+* The model year sensor now reports the year encoded in the VIN rather than the
+  year the data source claims. Enode returns the same year for every car of a
+  model regardless of build date — it disagreed with the VIN on 94 of 111
+  vehicles — whereas VIN position 10 encodes the year directly.
+* The year reported by the data source is kept on the sensor as a
+  `reported_by_source` attribute, alongside `value_source` (`vin` or `vendor`),
+  so nothing is lost and it is always clear which was used.
+* The device's model line uses the same year as the sensor.
+* Where no year can be read from the VIN, the source's year is used exactly as
+  before. Requires a backend that supplies `information.vinModelYear`; without
+  it the sensor behaves as it did previously.
+
+---
+
 ## \[1.10.0] - 2026-08-27
 
 ### Added

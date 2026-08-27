@@ -14,6 +14,35 @@ import logging
 _LOGGER = logging.getLogger(__name__)
 
 
+# Fields where a value we derive ourselves is more trustworthy than the one the
+# data source reports. The vendor's model year is frequently wrong — Enode
+# returns the same year for every car of a model regardless of build date —
+# whereas VIN position 10 encodes it directly.
+PREFERRED_FIELDS = {
+    "information.year": "information.vinModelYear",
+}
+
+
+def _resolve_field(data: dict | None, field: str):
+    """Read a dotted path out of a nested payload."""
+    value = data or {}
+    for part in field.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
+
+
+def _preferred_value(data: dict | None, field: str):
+    """Return the derived value for a field when we have one, else the reported one."""
+    preferred = PREFERRED_FIELDS.get(field)
+    if preferred is not None:
+        derived = _resolve_field(data, preferred)
+        if derived is not None:
+            return derived
+    return _resolve_field(data, field)
+
+
 def _build_device_info(entry, vehicle_data: dict | None = None) -> DeviceInfo:
     """Build device_info using vehicle name and model from data."""
     if vehicle_data:
@@ -30,7 +59,7 @@ def _build_device_info(entry, vehicle_data: dict | None = None) -> DeviceInfo:
         info = vehicle_data.get("information", {})
         brand = info.get("brand", "")
         model_str = info.get("model", "")
-        year = info.get("year")
+        year = _preferred_value(vehicle_data, "information.year")
         model_parts = [p for p in [brand, model_str] if p]
         model_display = " ".join(model_parts)
         if year:
@@ -184,15 +213,11 @@ class EVConduitVehicleSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def state(self):
-        # Retrieve the value from the nested JSON
+        # Retrieve the value from the nested JSON, preferring a derived value
+        # over the reported one where we have a better source (see
+        # PREFERRED_FIELDS).
         data = self.coordinator.data or {}
-        parts = self._field.split(".")
-        val = data
-        for p in parts:
-            if not isinstance(val, dict):
-                val = None
-                break
-            val = val.get(p)
+        val = _preferred_value(data, self._field)
 
         # Special handling for null values on chargeRate and chargeTimeRemaining
         if self._field in ("chargeState.chargeRate", "chargeState.chargeTimeRemaining"):
@@ -200,6 +225,24 @@ class EVConduitVehicleSensor(CoordinatorEntity, SensorEntity):
 
         # Other sensors: return as usual (None → Unknown)
         return val
+
+    @property
+    def extra_state_attributes(self):
+        """Expose the reported value alongside a derived one, so nothing is lost."""
+        preferred = PREFERRED_FIELDS.get(self._field)
+        if preferred is None:
+            return None
+
+        data = self.coordinator.data or {}
+        derived = _resolve_field(data, preferred)
+        reported = _resolve_field(data, self._field)
+        if derived is None:
+            return {"value_source": "vendor"}
+
+        return {
+            "value_source": "vin",
+            "reported_by_source": reported,
+        }
 
     @property
     def unit_of_measurement(self):
