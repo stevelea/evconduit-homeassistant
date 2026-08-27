@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file. Follows [Se
 
 ---
 
+## \[1.10.0] - 2026-08-27
+
+### Added
+
+* New `image` entity exposing the vehicle's manufacturer artwork, sourced from the
+  backend's `information.imageUrl`. Usable directly in picture-entity and
+  picture-glance dashboard cards.
+* The entity is only created when the linked vehicle actually has artwork — Enode
+  is currently the only source that provides it, so ABRP, Tibber and Smartcar
+  vehicles get no broken placeholder.
+
+---
+
 ## \[1.5.2] - 2026-02-02
 
 ### Added

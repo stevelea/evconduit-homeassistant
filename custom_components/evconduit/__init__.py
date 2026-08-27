@@ -26,6 +26,8 @@ from .abrp import ABRPClient
 
 _LOGGER = logging.getLogger(__name__)
 
+PLATFORMS = ["sensor", "device_tracker", "image"]
+
 
 async def _handle_push_webhook(hass, webhook_id: str, request) -> web.Response:
     """Push webhook for EVConduit – updates the vehicle coordinator."""
@@ -618,9 +620,9 @@ async def async_setup_entry(hass, entry) -> bool:
         # Store client for unload
         hass.data[DOMAIN][f"{entry.entry_id}_client"] = client
 
-        # 6) Forward to the sensor and device_tracker platforms
-        await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "device_tracker"])
-        _LOGGER.debug("Forwarded entry to sensor platform")
+        # 6) Forward to the sensor, device_tracker and image platforms
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        _LOGGER.debug("Forwarded entry to platforms: %s", PLATFORMS)
 
         _LOGGER.info("---- [EVConduit] async_setup_entry finished for %s ----", entry.entry_id)
         return True
@@ -632,7 +634,7 @@ async def async_setup_entry(hass, entry) -> bool:
 async def async_unload_entry(hass, entry) -> bool:
     """Unload EVConduit: deregister webhook & service, remove coordinators."""
     _LOGGER.debug("Unloading EVConduit entry %s", entry.entry_id)
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor", "device_tracker"])
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     # Only remove global services if this is the last entry being unloaded
     remaining = sum(
