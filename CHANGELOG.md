@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file. Follows [Se
 
 ---
 
+## \[1.13.0] - 2026-08-27
+
+### Added
+
+* A **Consumption** sensor, in kWh/100 km, showing the consumption your car's
+  own range estimate is built on. Every car reports a battery percentage, a
+  pack size and a predicted range, and it arrived at that range by assuming a
+  consumption — dividing the energy actually in the battery by the range
+  offered gives that assumption back.
+* This is not measured consumption, and that is what makes it useful: it is
+  what the car currently believes about itself, so it drops in the cold, on the
+  motorway, or with the car loaded. It is the number to graph against outside
+  temperature, or to trigger an alert on when the range looks short before a
+  long drive.
+* The sensor is unknown rather than wrong below 5% battery or under 10 km of
+  range. Battery level arrives as a whole percent, and near empty that rounding
+  alone can move the answer by more than a tenth. It is also unknown for
+  vehicles whose data source never reports a battery capacity, since there is
+  nothing to divide.
+* Requires a backend that supplies `chargeState.consumptionKwhPer100Km`. The
+  sensor is created either way and simply stays unknown without it.
+
+---
+
 ## \[1.12.0] - 2026-08-27
 
 ### Added
