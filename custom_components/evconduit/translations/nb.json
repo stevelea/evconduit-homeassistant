@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Koble til EVConduit",
+        "description": "Skriv inn API-nøkkelen din, velg miljø og kjøretøy.",
+        "data": {
+          "api_key": "API-nøkkel",
+          "environment": "Miljø",
+          "vehicle_id": "Kjøretøy-ID",
+          "abrp_token": "ABRP-token (valgfritt)"
+        }
+      },
+      "reconfigure": {
+        "data": {
+          "api_key": "API-nøkkel",
+          "environment": "Miljø",
+          "vehicle_id": "Kjøretøy-ID",
+          "abrp_token": "ABRP-token (valgfritt)"
+        }
+      }
+    },
+    "options": {
+      "prod": "Produksjon",
+      "sandbox": "Testmiljø"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "EVConduit-innstillinger",
+        "description": "Konfigurer integrasjonsinnstillinger.",
+        "data": {
+          "update_interval": "Oppdateringsintervall (minutter)",
+          "odometer_entity": "Sensor for kilometerstand (oppdateres automatisk etter lading)",
+          "electricity_rate_entity": "Sensor for strømpris (valgfritt)",
+          "electricity_rate_currency": "Valuta (oppdages automatisk fra Home Assistant-innstillingene)",
+          "charging_history": "Ladehistorikk-sensorer (siste lading og månedlige totaler)"
+        }
+      }
+    }
+  }
+}

@@ -34,7 +34,8 @@
           "update_interval": "Aktualisierungsintervall (Minuten)",
           "odometer_entity": "Kilometerzähler-Sensor (Auto-Update nach Laden)",
           "electricity_rate_entity": "Strompreis-Sensor (optional)",
-          "electricity_rate_currency": "Währung (automatisch aus HA-Einstellungen)"
+          "electricity_rate_currency": "Währung (automatisch aus HA-Einstellungen)",
+          "charging_history": "Ladeverlauf-Sensoren (letzte Sitzung und Monatssummen)"
         }
       }
     }

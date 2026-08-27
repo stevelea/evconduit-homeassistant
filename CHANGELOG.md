@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file. Follows [Se
 
 ---
 
+## \[1.12.0] - 2026-08-27
+
+### Added
+
+* Norwegian Bokmål translation (`nb`), contributed by @monsivar in #10.
+
+### Fixed
+
+* No longer triggers Home Assistant's deprecation warning for `TrackerEntity`
+  (#11). The class is now imported from `homeassistant.components.device_tracker`
+  rather than the deprecated `...device_tracker.config_entry` alias, which is
+  scheduled for removal in HA Core 2027.6. Reported by @Swiiney.
+* The **charging history** option in the integration's settings had no
+  translated label in any language, so it showed as a raw key. Added to
+  English, German, Swedish and Norwegian.
+
+---
+
 ## \[1.11.0] - 2026-08-27
 
 ### Changed

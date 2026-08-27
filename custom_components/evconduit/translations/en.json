@@ -34,7 +34,8 @@
           "update_interval": "Update interval (minutes)",
           "odometer_entity": "Odometer sensor (auto-update after charge)",
           "electricity_rate_entity": "Electricity rate sensor (optional)",
-          "electricity_rate_currency": "Currency (auto-detected from HA settings)"
+          "electricity_rate_currency": "Currency (auto-detected from HA settings)",
+          "charging_history": "Charging history sensors (last session and monthly totals)"
         }
       }
     }
