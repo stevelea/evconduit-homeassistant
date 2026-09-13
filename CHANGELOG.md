@@ -21,9 +21,26 @@ All notable changes to this project will be documented in this file. Follows [Se
   integration switched off switched back on again. One you disabled yourself is
   never touched: the registry records who did it, and only our own doing is
   undone.
-* Needs a backend that reports `source` in the vehicle status response. Without
-  it nothing is treated as ABRP-fed and these sensors stay exactly as they are,
-  so this is safe to install before the backend is updated.
+* The sensor gating above needs a backend that reports `source` in the vehicle
+  status response; without it nothing is treated as ABRP-fed and those sensors
+  stay exactly as they are, so this is safe to install before the backend is
+  updated. The two fixes below need no backend change.
+
+### Fixed
+
+* **Data is no longer pushed back into ABRP when it came from ABRP.** EVConduit
+  pulls an ABRP-linked car from ABRP, hands it to Home Assistant, and Home
+  Assistant was handing it straight back — so ABRP was told its own last-known
+  reading was a current one, and the car's real state of charge never reached
+  it. A car asleep overnight could be reported at the same percentage for hours
+  while the car itself said something quite different.
+* Telemetry sent to ABRP now carries **the time the reading was taken**, not the
+  time it was sent. Stamping "now" on a value read hours ago made stale data
+  indistinguishable from live data, both to ABRP's route planning and back to us
+  through the pull.
+* The loop is broken whether or not the backend reports `source`: a vehicle
+  whose payload carries `abrp_extra` is one EVConduit has pulled from ABRP, so
+  that alone is enough to recognise the data as ABRP's own.
 
 ---
 

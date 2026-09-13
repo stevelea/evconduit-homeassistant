@@ -29,6 +29,25 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["sensor", "device_tracker", "image"]
 
 
+def _came_from_abrp(vehicle_data: dict) -> bool:
+    """Whether this vehicle's data was read from ABRP in the first place.
+
+    Pushing such data back to ABRP closes a loop: EVConduit pulls the car from
+    ABRP, hands it to Home Assistant, and Home Assistant hands it straight back
+    with a fresh timestamp — so ABRP reports its own last-known reading as a
+    current one and the car's real state of charge never reaches it.
+
+    `source` is the authority, and the backend reports it. `abrp_extra` is the
+    fallback for a backend that does not yet: it is only present on a vehicle we
+    have pulled from ABRP, so a payload carrying it is ABRP data whatever the
+    source says. A car that also has a direct connection is not starved by this
+    — ABRP has its own link to that car, which is where the field came from.
+    """
+    if (vehicle_data.get("source") or "").lower() == "abrp":
+        return True
+    return bool(vehicle_data.get("abrp_extra"))
+
+
 async def _handle_push_webhook(hass, webhook_id: str, request) -> web.Response:
     """Push webhook for EVConduit – updates the vehicle coordinator."""
     try:
@@ -164,13 +183,35 @@ async def async_setup_entry(hass, entry) -> bool:
             _LOGGER.info("ABRP integration enabled for entry %s", entry.entry_id)
 
             # Add listener to send telemetry on vehicle updates
+            announced_loop = {"done": False}
+
             @callback
             def _send_abrp_update():
-                """Send vehicle telemetry to ABRP when data updates."""
-                if vehicle_coord.data:
-                    hass.async_create_task(
-                        abrp_client.async_send_telemetry(vehicle_coord.data)
-                    )
+                """Send vehicle telemetry to ABRP when data updates.
+
+                Not when the data came from ABRP itself — see _came_from_abrp:
+                that is the loop in which ABRP ends up being told its own last
+                reading is current. The backend guards its own ABRP push the
+                same way, against the credentials it can see; this push uses a
+                token configured here, so only this side can notice.
+                """
+                data = vehicle_coord.data or {}
+                if not data:
+                    return
+                if _came_from_abrp(data):
+                    # Once per setup, so the reason is visible in the log
+                    # without repeating it every poll.
+                    if not announced_loop["done"]:
+                        announced_loop["done"] = True
+                        _LOGGER.info(
+                            "[EVConduit] Not sending telemetry to ABRP: this "
+                            "vehicle's data comes from ABRP, so sending it back "
+                            "would only tell ABRP what it already said"
+                        )
+                    return
+                hass.async_create_task(
+                    abrp_client.async_send_telemetry(data)
+                )
 
             vehicle_coord.async_add_listener(_send_abrp_update)
             _LOGGER.debug("ABRP update listener added to vehicle coordinator")

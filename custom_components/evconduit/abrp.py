@@ -4,11 +4,38 @@
 
 import logging
 import time
+from datetime import datetime, timezone
+
 import aiohttp
 
 from .const import ABRP_API_URL
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _epoch_from_iso(value) -> int | None:
+    """Parse a payload timestamp into the epoch seconds ABRP's API wants.
+
+    Tolerates both the "Z" that Enode sends and the "+00:00" that the backend
+    writes, and treats a naive timestamp as UTC rather than guessing a local
+    zone.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+
+    return int(parsed.timestamp())
 
 
 class ABRPClient:
@@ -41,10 +68,15 @@ class ABRPClient:
             _LOGGER.debug("No vehicle data to send to ABRP")
             return False
 
-        # Build telemetry payload
+        # The reading's own time, not the time we happen to be sending it.
+        # Stamping "now" on a value read hours ago is what let a car asleep for
+        # the night report its last known state of charge as a current one, and
+        # ABRP has no way to tell the difference — so the timestamp has to be
+        # the reading's, and ABRP can then judge the age for itself.
         payload = {
             "token": self._token,
-            "utc": int(time.time()),
+            "utc": _epoch_from_iso(self._get_nested(vehicle_data, "lastSeen"))
+            or int(time.time()),
         }
 
         # Map EVConduit fields to ABRP fields
