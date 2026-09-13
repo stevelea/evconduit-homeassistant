@@ -158,6 +158,21 @@ NEVER_SUPPLIED_FIELDS = frozenset({
     "abrp_extra.tire_pressure_rr",
 })
 
+# Fields only a direct vehicle connection supplies. The ABRP feed has no charge
+# limit, power delivery state or smart-charging policy at all, so on an
+# ABRP-fed car these four sensors could only ever read "unknown".
+#
+# Gated on the payload's `source`, not disabled outright, because an Enode car
+# fills all four — and because a car linked through both sources has the values
+# copied onto its ABRP row, so presence is checked as well before anything is
+# switched off.
+ENODE_ONLY_FIELDS = frozenset({
+    "chargeState.chargeLimit",
+    "chargeState.powerDeliveryState",
+    "smartChargingPolicy.isEnabled",
+    "smartChargingPolicy.minimumChargeLimit",
+})
+
 CHARGING_HISTORY_LAST_SESSION_FIELDS = {
     "last_charge_energy": ("Last Charge Energy", "kWh"),
     "last_charge_cost": ("Last Charge Cost", None),

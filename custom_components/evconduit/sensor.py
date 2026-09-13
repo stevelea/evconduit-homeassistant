@@ -10,7 +10,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 from .const import (
     DOMAIN, ICONS, USER_FIELDS, VEHICLE_FIELDS, WEBHOOK_FIELDS,
-    NEVER_SUPPLIED_FIELDS,
+    NEVER_SUPPLIED_FIELDS, ENODE_ONLY_FIELDS,
     CONF_CHARGING_HISTORY, CHARGING_HISTORY_LAST_SESSION_FIELDS,
     CHARGING_HISTORY_MONTHLY_FIELDS,
 )
@@ -81,6 +81,30 @@ def _build_device_info(entry, vehicle_data: dict | None = None) -> DeviceInfo:
     }
 
 
+def _unfillable_fields(vehicle_data: dict) -> set:
+    """The fields this particular vehicle can never supply.
+
+    Two different reasons, which are handled the same way but mean different
+    things:
+
+    * NEVER_SUPPLIED_FIELDS — no source has ever sent them, so no vehicle can
+      fill them and they stay disabled however the car is connected.
+    * ENODE_ONLY_FIELDS on an ABRP-fed car — the ABRP feed has none of them.
+      Presence is checked as well as the source, because a car linked through
+      both Enode and ABRP has those values copied onto its ABRP row, and that
+      data is real: only fields that are genuinely absent are switched off.
+    """
+    unfillable = set(NEVER_SUPPLIED_FIELDS)
+
+    source = (vehicle_data.get("source") or "").lower()
+    if source == "abrp":
+        for field in ENODE_ONLY_FIELDS:
+            if _resolve_field(vehicle_data, field) is None:
+                unfillable.add(field)
+
+    return unfillable
+
+
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up EVConduit sensors."""
     user_coordinator = hass.data[DOMAIN].get(entry.entry_id)
@@ -91,6 +115,18 @@ async def async_setup_entry(hass, entry, async_add_entities):
     vehicle_data = vehicle_coordinator.data or {}
     capabilities = vehicle_data.get("capabilities", {})
     _LOGGER.debug("[EVConduit] Vehicle capabilities: %s", capabilities)
+
+    # Which sensors this vehicle can never fill. They are still created — a
+    # source may start supplying them later — but registered disabled, so they
+    # do not sit at "unknown" on a dashboard that cannot use them.
+    unfillable = _unfillable_fields(vehicle_data)
+    source_only = unfillable - NEVER_SUPPLIED_FIELDS
+    if source_only:
+        _LOGGER.info(
+            "[EVConduit] Vehicle source is %r, so these sensors start disabled: %s",
+            vehicle_data.get("source"),
+            sorted(source_only),
+        )
 
     def is_field_capable(field):
         cap_key = field.split(".")[0]
@@ -108,7 +144,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
         for field, (label, unit) in VEHICLE_FIELDS.items():
             if is_field_capable(field):
                 entities.append(
-                    EVConduitVehicleSensor(vehicle_coordinator, entry, field, label, unit)
+                    EVConduitVehicleSensor(
+                        vehicle_coordinator, entry, field, label, unit, unfillable
+                    )
                 )
                 _LOGGER.warning(
                     "[EVConduit] Sensor created: %s, field: %s",
@@ -161,45 +199,77 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # entity_registry_enabled_default is applied when a sensor is first
     # registered, so an install that has been running since before this change
-    # keeps the never-supplied ones enabled and showing "unknown". Registration
-    # is scheduled rather than finished, hence the delay before looking.
-    async_call_later(hass, 5, _retire_never_supplied(hass, entry))
+    # keeps them enabled and showing "unknown". Registration is scheduled rather
+    # than finished, hence the delay before looking.
+    async_call_later(hass, 5, _reconcile_disabled_sensors(hass, entry, unfillable))
 
 
-def _retire_never_supplied(hass, entry):
-    """A one-shot callback that disables the never-supplied sensors already registered.
+def _reconcile_disabled_sensors(hass, entry, unfillable):
+    """A one-shot callback that brings registered sensors in line with the vehicle.
 
-    Only a sensor that has still never produced a value is touched, so one that a
-    source does fill is left alone. A hand-enabled never-supplied sensor cannot be
-    told apart from a default one, so it is switched off again on the next restart.
+    Two jobs, because the registry outlives a single setup:
+
+    * Switch off a sensor the vehicle cannot fill, but only while it has still
+      never produced a value — so a sensor that a source does fill is left alone.
+    * Switch back on one this integration had previously switched off, if the
+      vehicle can fill it now. Only our own doing is undone: an entity a user
+      disabled carries RegistryEntryDisabler.USER and is never touched.
+
+    Nothing can tell a hand-enabled sensor from a default one, so a sensor the
+    vehicle cannot fill and a user switches back on is switched off again on the
+    next restart. That is the honest cost of not leaving them cluttering every
+    dashboard.
     """
+    restorable = ENODE_ONLY_FIELDS - unfillable
 
     @callback
-    def _disable(now=None):
+    def _run(now=None):
         try:
             registry = er.async_get(hass)
-            for field in NEVER_SUPPLIED_FIELDS:
-                unique_id = f"{DOMAIN}-{entry.entry_id}-vehicle-{field}"
-                entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
-                if not entity_id:
-                    continue
-                registered = registry.async_get(entity_id)
-                if not registered or registered.disabled_by is not None:
-                    continue
-                state = hass.states.get(entity_id)
-                if state is not None and state.state not in ("unknown", "unavailable"):
-                    continue
-                registry.async_update_entity(
-                    entity_id, disabled_by=RegistryEntryDisabler.INTEGRATION
-                )
-                _LOGGER.info(
-                    "[EVConduit] Disabled %s: no data source has ever supplied it",
-                    entity_id,
-                )
+            for field in unfillable:
+                _disable_when_unused(registry, hass, entry, field)
+            for field in restorable:
+                _restore_when_we_disabled_it(registry, entry, field)
         except Exception:
-            _LOGGER.exception("[EVConduit] Could not disable never-supplied sensors")
+            _LOGGER.exception("[EVConduit] Could not reconcile disabled sensors")
 
-    return _disable
+    return _run
+
+
+def _entity_id_for(registry, entry, field):
+    """The registry entity id for one vehicle-status field, if it is registered."""
+    unique_id = f"{DOMAIN}-{entry.entry_id}-vehicle-{field}"
+    return registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+
+
+def _disable_when_unused(registry, hass, entry, field):
+    entity_id = _entity_id_for(registry, entry, field)
+    if not entity_id:
+        return
+
+    registered = registry.async_get(entity_id)
+    if not registered or registered.disabled_by is not None:
+        return
+
+    state = hass.states.get(entity_id)
+    if state is not None and state.state not in ("unknown", "unavailable"):
+        return
+
+    registry.async_update_entity(entity_id, disabled_by=RegistryEntryDisabler.INTEGRATION)
+    _LOGGER.info("[EVConduit] Disabled %s: this vehicle cannot supply it", entity_id)
+
+
+def _restore_when_we_disabled_it(registry, entry, field):
+    entity_id = _entity_id_for(registry, entry, field)
+    if not entity_id:
+        return
+
+    registered = registry.async_get(entity_id)
+    if not registered or registered.disabled_by != RegistryEntryDisabler.INTEGRATION:
+        return
+
+    registry.async_update_entity(entity_id, disabled_by=None)
+    _LOGGER.info("[EVConduit] Enabled %s: this vehicle can supply it", entity_id)
 
 
 class EVConduitSensor(CoordinatorEntity, SensorEntity):
@@ -243,16 +313,17 @@ class EVConduitSensor(CoordinatorEntity, SensorEntity):
 class EVConduitVehicleSensor(CoordinatorEntity, SensorEntity):
     """Sensor for vehicle status."""
 
-    def __init__(self, coordinator, entry, field, name, unit):
+    def __init__(self, coordinator, entry, field, name, unit, unfillable=frozenset()):
         super().__init__(coordinator)
         self._entry = entry
         self._field = field
         self._name = name
         self._unit = unit
-        # A sensor for a field nothing has ever supplied is registered disabled,
-        # so it does not clutter a dashboard with a permanent "unknown". It is
-        # still there to be enabled by anyone who wants to watch for it.
-        self._attr_entity_registry_enabled_default = field not in NEVER_SUPPLIED_FIELDS
+        # A sensor for a field this vehicle can never supply is registered
+        # disabled, so it does not clutter a dashboard with a permanent
+        # "unknown". It is still there to be enabled by anyone who wants to
+        # watch for it.
+        self._attr_entity_registry_enabled_default = field not in unfillable
 
     @property
     def device_info(self) -> DeviceInfo:

@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file. Follows [Se
 
 ---
 
+## \[1.13.2] - 2026-09-13
+
+### Changed
+
+* Four more sensors are **disabled by default** for a car connected through
+  ABRP: Charge Limit, Power Delivery State, Smart Charging Enabled and Min Charge
+  Limit. The ABRP feed carries none of them, so on an ABRP-fed car they could
+  only ever read "unknown".
+* They are gated on the vehicle's data source rather than switched off outright.
+  An Enode-linked car fills all four and keeps its sensors, and a car linked
+  through both sources has the values copied onto its ABRP row — so the field's
+  presence is checked as well, and only fields that are genuinely absent are
+  switched off.
+* A car that later moves to a source which can fill them has the sensors this
+  integration switched off switched back on again. One you disabled yourself is
+  never touched: the registry records who did it, and only our own doing is
+  undone.
+* Needs a backend that reports `source` in the vehicle status response. Without
+  it nothing is treated as ABRP-fed and these sensors stay exactly as they are,
+  so this is safe to install before the backend is updated.
+
+---
+
 ## \[1.13.1] - 2026-09-13
 
 ### Changed
