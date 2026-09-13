@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file. Follows [Se
 
 ---
 
+## \[1.13.1] - 2026-09-13
+
+### Changed
+
+* Six sensors that no data source has ever supplied are now **disabled by
+  default**, so they no longer sit at "unknown" on every dashboard: Cabin
+  Temperature, HVAC Power, and the four Tyre Pressure sensors. ABRP documents no
+  `hvac_*`, `cabin_temp` or `tire_pressure_*` telemetry at all, and the backend
+  stopped collecting them rather than leaving dead lookups in every payload. The
+  sensors are still created, so a future source can fill them — enable one from
+  the entity's settings if you want to watch for it.
+* An install that predates this keeps them enabled, because Home Assistant only
+  applies the default the first time a sensor is registered, so each one is
+  switched off directly as well — but only while it has still never produced a
+  value, leaving any sensor a source does fill untouched. Nothing can tell a
+  hand-enabled sensor from a default one, so a never-supplied sensor you switch
+  back on is switched off again on the next restart.
+
+---
+
 ## \[1.13.0] - 2026-08-27
 
 ### Added

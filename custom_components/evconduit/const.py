@@ -141,6 +141,23 @@ VEHICLE_FIELDS = {
     "abrp_extra.tire_pressure_rr": ("Tire Pressure RR", "bar"),
 }
 
+# Fields no data source has ever supplied, so their sensors would sit at
+# "unknown" on every install for the life of the integration.
+#
+# ABRP documents no hvac_*, cabin_temp or tire_pressure_* telemetry at all, and
+# the backend deliberately stopped collecting them rather than leaving dead
+# lookups in every payload. They stay declared here so that a future source can
+# fill them without anyone having to remember they existed, but they are
+# registered disabled so they do not appear on a dashboard that cannot use them.
+NEVER_SUPPLIED_FIELDS = frozenset({
+    "abrp_extra.cabin_temp",
+    "abrp_extra.hvac_power",
+    "abrp_extra.tire_pressure_fl",
+    "abrp_extra.tire_pressure_fr",
+    "abrp_extra.tire_pressure_rl",
+    "abrp_extra.tire_pressure_rr",
+})
+
 CHARGING_HISTORY_LAST_SESSION_FIELDS = {
     "last_charge_energy": ("Last Charge Energy", "kWh"),
     "last_charge_cost": ("Last Charge Cost", None),

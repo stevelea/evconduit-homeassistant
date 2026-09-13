@@ -1,11 +1,16 @@
 # custom_components/evconduit/sensor.py
 
+from homeassistant.core import callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity_registry import RegistryEntryDisabler
+from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 from .const import (
     DOMAIN, ICONS, USER_FIELDS, VEHICLE_FIELDS, WEBHOOK_FIELDS,
+    NEVER_SUPPLIED_FIELDS,
     CONF_CHARGING_HISTORY, CHARGING_HISTORY_LAST_SESSION_FIELDS,
     CHARGING_HISTORY_MONTHLY_FIELDS,
 )
@@ -154,6 +159,48 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     async_add_entities(entities)
 
+    # entity_registry_enabled_default is applied when a sensor is first
+    # registered, so an install that has been running since before this change
+    # keeps the never-supplied ones enabled and showing "unknown". Registration
+    # is scheduled rather than finished, hence the delay before looking.
+    async_call_later(hass, 5, _retire_never_supplied(hass, entry))
+
+
+def _retire_never_supplied(hass, entry):
+    """A one-shot callback that disables the never-supplied sensors already registered.
+
+    Only a sensor that has still never produced a value is touched, so one that a
+    source does fill is left alone. A hand-enabled never-supplied sensor cannot be
+    told apart from a default one, so it is switched off again on the next restart.
+    """
+
+    @callback
+    def _disable(now=None):
+        try:
+            registry = er.async_get(hass)
+            for field in NEVER_SUPPLIED_FIELDS:
+                unique_id = f"{DOMAIN}-{entry.entry_id}-vehicle-{field}"
+                entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+                if not entity_id:
+                    continue
+                registered = registry.async_get(entity_id)
+                if not registered or registered.disabled_by is not None:
+                    continue
+                state = hass.states.get(entity_id)
+                if state is not None and state.state not in ("unknown", "unavailable"):
+                    continue
+                registry.async_update_entity(
+                    entity_id, disabled_by=RegistryEntryDisabler.INTEGRATION
+                )
+                _LOGGER.info(
+                    "[EVConduit] Disabled %s: no data source has ever supplied it",
+                    entity_id,
+                )
+        except Exception:
+            _LOGGER.exception("[EVConduit] Could not disable never-supplied sensors")
+
+    return _disable
+
 
 class EVConduitSensor(CoordinatorEntity, SensorEntity):
     """Sensor for user information."""
@@ -202,6 +249,10 @@ class EVConduitVehicleSensor(CoordinatorEntity, SensorEntity):
         self._field = field
         self._name = name
         self._unit = unit
+        # A sensor for a field nothing has ever supplied is registered disabled,
+        # so it does not clutter a dashboard with a permanent "unknown". It is
+        # still there to be enabled by anyone who wants to watch for it.
+        self._attr_entity_registry_enabled_default = field not in NEVER_SUPPLIED_FIELDS
 
     @property
     def device_info(self) -> DeviceInfo:
