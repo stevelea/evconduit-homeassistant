@@ -83,6 +83,9 @@ ICONS = {
     "monthly_charge_energy": "mdi:lightning-bolt",
     "monthly_charge_cost": "mdi:currency-usd",
     "monthly_charge_count": "mdi:counter",
+    # Cumulative totals (Energy Dashboard)
+    "total_charge_energy": "mdi:lightning-bolt",
+    "home_charge_energy": "mdi:home-lightning-bolt",
 }
 
 USER_FIELDS = {
@@ -185,4 +188,21 @@ CHARGING_HISTORY_MONTHLY_FIELDS = {
     "monthly_charge_energy": ("Monthly Charge Energy", "kWh"),
     "monthly_charge_cost": ("Monthly Charge Cost", None),
     "monthly_charge_count": ("Monthly Charge Count", "sessions"),
+}
+
+# Cumulative totals, read from the backend's own aggregate rather than summed
+# from the sessions held here.
+#
+# Summing locally would be wrong in a way that never heals. `/ha/charging/
+# sessions` pages, and a commuter passes the page cap in about a year, so a
+# total kept from those rows quietly stops growing — and on a
+# `total_increasing` sensor an omission is permanent, because Home Assistant
+# only ever adds positive deltas.
+#
+# These two are the only fields in this integration that carry
+# `device_class: energy` and `state_class: total_increasing`, which is what
+# makes them selectable in the Energy Dashboard under Individual Devices.
+CHARGING_HISTORY_TOTAL_FIELDS = {
+    "total_charge_energy": ("Total Charge Energy", "kWh"),
+    "home_charge_energy": ("Home Charge Energy", "kWh"),
 }

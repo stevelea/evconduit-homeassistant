@@ -402,6 +402,24 @@ async def async_setup_entry(hass, entry) -> bool:
                     else:
                         _LOGGER.warning("---- [EVConduit] No new sessions to sync")
 
+                    # Cumulative energy for the Energy Dashboard, from the
+                    # backend's aggregate. Kept on the same cadence as the
+                    # session sync so the two figures cannot describe
+                    # different moments.
+                    #
+                    # `available: false` arrives with zeroed figures, meaning
+                    # the aggregate could not be read. That is not a real zero,
+                    # and storing it would drive a `total_increasing` sensor to
+                    # 0, which Home Assistant records as a meter reset — so the
+                    # previous value is kept instead.
+                    totals = await client.async_get_energy_totals()
+                    if totals and totals.get("available") is not False:
+                        ch_state["data"]["energy_totals"] = totals
+                    else:
+                        _LOGGER.warning(
+                            "---- [EVConduit] Energy totals unavailable, keeping previous value"
+                        )
+
                     # Update last_sync to the latest session's created_at timestamp
                     # (not datetime.now(), because sessions are created when charging
                     # ends and their start_time can be hours before created_at)

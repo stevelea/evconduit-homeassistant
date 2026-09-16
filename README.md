@@ -64,6 +64,7 @@ You will find your API key on [evconduit.com](https://evconduit.com) as describe
 - Automatically fetches vehicle data and charging status
 - Supports multiple car brands through Enode
 - Real-time updates via webhook
+- Cumulative charging energy that can be added to Home Assistant's Energy Dashboard
 - Optional ABRP (A Better Route Planner) integration
 - Designed for security, simplicity, and reliability
 

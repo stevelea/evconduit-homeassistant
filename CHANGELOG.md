@@ -4,6 +4,44 @@ All notable changes to this project will be documented in this file. Follows [Se
 
 ---
 
+## \[1.14.0] - 2026-09-17
+
+### Added
+
+* **The car can now be added to Home Assistant's Energy Dashboard.** Two new
+  sensors, **Total Charge Energy** and **Home Charge Energy**, report cumulative
+  kWh with `device_class: energy` and `state_class: total_increasing` — the pair
+  of attributes the Energy Dashboard requires before it will list a sensor under
+  **Individual Devices**. Add them under **Settings → Dashboards → Energy →
+  Individual Devices → Add Device**, and Home Assistant will chart the car's
+  charging and price it at whatever rate is configured there.
+* They read the backend's `GET /api/ha/charging/energy-total` aggregate rather
+  than summing the charging history the integration already holds. That history
+  is paged by the API, and a commuter passes the page cap in about a year, so a
+  locally summed total would quietly stop growing — and on a `total_increasing`
+  sensor an omission is permanent, because Home Assistant only ever adds
+  positive deltas.
+* Both are registered whenever **Charging History** is enabled, alongside the
+  existing last-charge and 30-day sensors.
+
+### Notes
+
+* **`Home Charge Energy` reads 0 on an account that has only ever uploaded a car
+  data export.** Home charging is classified from the car's coordinates, and an
+  export contains no GPS at all. That is a missing classification rather than
+  missing energy — **Total Charge Energy** is complete either way.
+* **The endpoint totals the whole account.** The sensors use the per-vehicle
+  figure for this entry's vehicle where the backend reports one, a
+  single-vehicle account's figure when there is only one car, and report
+  *unknown* rather than attributing another car's charging to this one when a
+  multi-car account cannot be resolved.
+* **A total can go down**, when a charge is corrected downwards or a session is
+  deleted. Home Assistant reads a decrease on a `total_increasing` sensor as a
+  meter reset and counts on from the new value, which is the honest outcome; the
+  alternative hides a correction from the person paying for the electricity. A
+  fetch that fails reports *unknown*, never 0, so a network problem is not
+  recorded as the meter resetting.
+
 ## \[1.13.2] - 2026-09-13
 
 ### Changed

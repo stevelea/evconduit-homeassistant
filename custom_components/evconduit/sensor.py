@@ -2,7 +2,9 @@
 
 from homeassistant.core import callback
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import (
+    SensorDeviceClass, SensorEntity, SensorStateClass,
+)
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_registry import RegistryEntryDisabler
@@ -12,7 +14,8 @@ from .const import (
     DOMAIN, ICONS, USER_FIELDS, VEHICLE_FIELDS, WEBHOOK_FIELDS,
     NEVER_SUPPLIED_FIELDS, ENODE_ONLY_FIELDS,
     CONF_CHARGING_HISTORY, CHARGING_HISTORY_LAST_SESSION_FIELDS,
-    CHARGING_HISTORY_MONTHLY_FIELDS,
+    CHARGING_HISTORY_MONTHLY_FIELDS, CHARGING_HISTORY_TOTAL_FIELDS,
+    CONF_VEHICLE_ID,
 )
 from datetime import datetime, timedelta, timezone
 import logging
@@ -189,6 +192,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 )
             )
         for field, (label, unit) in CHARGING_HISTORY_MONTHLY_FIELDS.items():
+            entities.append(
+                EVConduitChargingHistorySensor(
+                    ch_coordinator, entry, field, label, unit, vehicle_coordinator
+                )
+            )
+        for field, (label, unit) in CHARGING_HISTORY_TOTAL_FIELDS.items():
             entities.append(
                 EVConduitChargingHistorySensor(
                     ch_coordinator, entry, field, label, unit, vehicle_coordinator
@@ -546,6 +555,33 @@ class EVConduitChargingHistorySensor(CoordinatorEntity, SensorEntity):
     def unit_of_measurement(self):
         return self._unit
 
+    @property
+    def device_class(self):
+        """Only the cumulative totals are energy; the rest are plain figures."""
+        if self._field in CHARGING_HISTORY_TOTAL_FIELDS:
+            return SensorDeviceClass.ENERGY
+        return None
+
+    @property
+    def state_class(self):
+        """
+        `total_increasing` is what makes these two selectable in the Energy
+        Dashboard, and it is a promise to Home Assistant.
+
+        The rest of the charging-history fields are 30-day windows that fall as
+        charges age out, so they must not claim to be running totals.
+
+        Note what the promise costs us: HA only ever adds positive deltas, and
+        reads a fall as a meter reset. The backend reports a downward
+        correction rather than smoothing it, which is the honest reading of a
+        corrected meter. It also means a figure that could not be read has to
+        be *unknown* rather than 0 — see `_energy_totals` — or a failed fetch
+        would be recorded as the meter resetting to zero.
+        """
+        if self._field in CHARGING_HISTORY_TOTAL_FIELDS:
+            return SensorStateClass.TOTAL_INCREASING
+        return None
+
     def _get_sessions(self) -> list:
         data = self.coordinator.data or {}
         return data.get("sessions", [])
@@ -561,6 +597,61 @@ class EVConduitChargingHistorySensor(CoordinatorEntity, SensorEntity):
         sessions = self._get_sessions()
         cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
         return [s for s in sessions if (s.get("start_time") or "") >= cutoff]
+
+    def _energy_totals(self) -> dict | None:
+        """The backend's cumulative totals, or None when there is no figure."""
+        data = self.coordinator.data or {}
+        totals = data.get("energy_totals")
+        if not totals:
+            return None
+        # Belt and braces: the sync already refuses to store an unavailable
+        # aggregate, but a payload from an older install could still carry one,
+        # and reading it as a real zero would look like a meter reset.
+        if totals.get("available") is False:
+            return None
+        return totals
+
+    def _energy_total(self, field: str):
+        """
+        This car's cumulative figure, or None when it cannot be attributed.
+
+        The endpoint totals the whole *account*, so on a multi-car account the
+        account figure is not this car's figure. Its per-vehicle entries are
+        used when one matches this entry's vehicle; failing that, a
+        single-vehicle account's figure is the same car and is used; and where
+        a multi-car account cannot be resolved the state is left unknown rather
+        than putting another car's charging on this one's Energy Dashboard.
+        """
+        totals = self._energy_totals()
+        if totals is None:
+            return None
+
+        configured = self._entry.data.get(CONF_VEHICLE_ID)
+        vehicles = totals.get("vehicles") or []
+        matched = next(
+            (v for v in vehicles if configured and v.get("vehicle_id") == configured),
+            None,
+        )
+        if matched is None:
+            if len(vehicles) == 1:
+                matched = vehicles[0]
+            elif vehicles:
+                _LOGGER.debug(
+                    "[EVConduit] %d vehicles on the account and none is %s, so the "
+                    "energy total stays unknown rather than reporting another "
+                    "car's charging",
+                    len(vehicles), configured,
+                )
+                return None
+
+        source = matched if matched is not None else totals
+        key = "home_energy_kwh" if field == "home_charge_energy" else "total_energy_kwh"
+        try:
+            return round(float(source.get(key)), 3)
+        except (TypeError, ValueError):
+            # A figure we cannot read is not zero. Leaving it unknown keeps a
+            # malformed payload from being recorded as a meter reset.
+            return None
 
     @property
     def state(self):
@@ -604,6 +695,9 @@ class EVConduitChargingHistorySensor(CoordinatorEntity, SensorEntity):
                 return round((et - st).total_seconds() / 60, 1)
             except (ValueError, TypeError):
                 return None
+
+        if self._field in CHARGING_HISTORY_TOTAL_FIELDS:
+            return self._energy_total(self._field)
 
         if self._field == "monthly_charge_energy":
             sessions = self._get_30_day_sessions()
