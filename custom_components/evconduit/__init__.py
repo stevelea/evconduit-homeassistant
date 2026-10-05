@@ -1,6 +1,7 @@
 # custom_components/evconduit/__init__.py
 
 import asyncio
+import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone
@@ -654,6 +655,77 @@ async def async_setup_entry(hass, entry) -> bool:
             hass.services.async_register(DOMAIN, "post_charging_session", _handle_post_session, schema=session_schema)
             _LOGGER.debug("Service post_charging_session registered")
 
+        # 2g) Register push_vehicle_state service
+        if not hass.services.has_service(DOMAIN, "push_vehicle_state"):
+            # `fields` is accepted either as a mapping or as a JSON string, and
+            # the string form is the one to use from an automation. Home
+            # Assistant renders a templated value in `data:` to text, so a
+            # template that builds a dict arrives as its repr — which is not
+            # JSON, and in which numbers and booleans are no longer numbers and
+            # booleans. A template ending in `| tojson` arrives as a string this
+            # can parse back into the types the backend validates, so
+            # `{{ ... | tojson }}` is the documented way to call this.
+            state_schema = vol.Schema({
+                vol.Required("fields"): vol.Any(str, {str: object}),
+                vol.Optional("observed_at"): str,
+                vol.Optional("vehicle_id"): str,
+            })
+
+            async def _handle_push_vehicle_state(call):
+                fields = call.data["fields"]
+                observed_at = call.data.get("observed_at")
+                target_vehicle = call.data.get("vehicle_id")
+                if isinstance(fields, str):
+                    try:
+                        fields = json.loads(fields)
+                    except ValueError:
+                        _LOGGER.error(
+                            "push_vehicle_state: `fields` is not valid JSON. Build it with "
+                            "`{{ ... | tojson }}` rather than by templating a dict directly: %s",
+                            fields[:200],
+                        )
+                        return
+                if not isinstance(fields, dict):
+                    _LOGGER.error(
+                        "push_vehicle_state: `fields` must be an object, got %s",
+                        type(fields).__name__,
+                    )
+                    return
+                domain_data = hass.data.get(DOMAIN, {})
+                clients_used = 0
+                for e in hass.config_entries.async_entries(DOMAIN):
+                    if target_vehicle and e.data.get(CONF_VEHICLE_ID) != target_vehicle:
+                        continue
+                    c = domain_data.get(f"{e.entry_id}_client")
+                    if not c:
+                        continue
+                    try:
+                        result = await c.async_push_vehicle_state(fields, observed_at)
+                        if result:
+                            _LOGGER.info(
+                                "Vehicle state pushed for vehicle %s: %s field(s) written",
+                                e.data.get(CONF_VEHICLE_ID), result.get("written"),
+                            )
+                        else:
+                            _LOGGER.warning(
+                                "Vehicle state push failed for vehicle %s", e.data.get(CONF_VEHICLE_ID)
+                            )
+                    except Exception:
+                        _LOGGER.exception(
+                            "Error in push_vehicle_state service for vehicle %s", e.data.get(CONF_VEHICLE_ID)
+                        )
+                    clients_used += 1
+                    if target_vehicle:
+                        break
+
+                if clients_used == 0:
+                    _LOGGER.error(
+                        "No matching vehicle found for push_vehicle_state (vehicle_id=%s)", target_vehicle
+                    )
+
+            hass.services.async_register(DOMAIN, "push_vehicle_state", _handle_push_vehicle_state, schema=state_schema)
+            _LOGGER.debug("Service push_vehicle_state registered")
+
         # 4) Register webhook under /api/webhook/{entry_id}
         webhook_id = entry.entry_id
         async_register(
@@ -701,7 +773,7 @@ async def async_unload_entry(hass, entry) -> bool:
         if e.entry_id != entry.entry_id
     )
     if remaining == 0:
-        for svc in ("set_charging", "update_odometer", "send_abrp_telemetry", "sync_charging_history", "post_charging_session"):
+        for svc in ("set_charging", "update_odometer", "send_abrp_telemetry", "sync_charging_history", "post_charging_session", "push_vehicle_state"):
             if hass.services.has_service(DOMAIN, svc):
                 hass.services.async_remove(DOMAIN, svc)
         _LOGGER.debug("All services removed (last entry unloaded)")

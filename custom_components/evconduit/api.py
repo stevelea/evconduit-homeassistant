@@ -379,3 +379,62 @@ class EVConduitClient:
             _LOGGER.exception(f"[EVConduitClient] Exception updating odometer: {err}")
         return None
 
+    async def async_push_vehicle_state(self, fields: dict, observed_at: str | None = None) -> dict | None:
+        """
+        Write values straight into the vehicle's cache.
+
+        The cache is filled from the car or from a linked data source, and this
+        is the only door into it: a reading from an OBD dongle, a separate
+        tyre-pressure sensor or a correction for something the car gets wrong
+        has nowhere else to live. `fields` maps dotted cache paths
+        (`chargeState.batteryLevel`, `location.latitude`) to the value to store
+        at each one.
+
+        A path the backend does not know, or will not let us write, fails the
+        whole call and writes nothing, so the paths are the caller's mapping to
+        get right — the 400 branch below says which ones we sent, because
+        retrying a bad path will never succeed.
+        Returns the response dict if successful, None otherwise.
+        """
+        url = f"{self.base_url}/api/ha/vehicle/{self.vehicle_id}/state"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {"fields": fields}
+        # observed_at is optional: it lets a caller backfill a reading taken
+        # earlier, and leaving it out means "as of now".
+        if observed_at is not None:
+            payload["observed_at"] = observed_at
+        _LOGGER.debug(f"[EVConduitClient] POST vehicle state: {url} payload={payload}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload, headers=headers, timeout=15) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        _LOGGER.info(f"[EVConduitClient] Vehicle state pushed successfully: {data}")
+                        return data
+                    elif resp.status == 400:
+                        text = await resp.text()
+                        # A rejected path is a bug in the mapping, not a
+                        # transient failure. Name every path we sent so the
+                        # caller can compare them against the backend's cache
+                        # paths instead of guessing which one it refused.
+                        _LOGGER.warning(
+                            f"[EVConduitClient] Vehicle state push rejected (HTTP 400): a field path "
+                            f"is unknown or not writable — paths sent: {', '.join(sorted(fields))} "
+                            f"— backend said: {text}"
+                        )
+                        return None
+                    else:
+                        text = await resp.text()
+                        _LOGGER.error(f"[EVConduitClient] Vehicle state push failed HTTP {resp.status}: {text}")
+                        return None
+        except (TimeoutError, aiohttp.ClientError) as err:
+            _LOGGER.warning(f"[EVConduitClient] Vehicle state push failed (network error): {err}")
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:
+            _LOGGER.exception(f"[EVConduitClient] Exception pushing vehicle state: {err}")
+        return None
+

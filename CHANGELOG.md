@@ -4,6 +4,48 @@ All notable changes to this project will be documented in this file. Follows [Se
 
 ---
 
+## \[1.15.0] - 2026-10-05
+
+### Added
+
+* A **Push Vehicle State** service, which writes values straight into the
+  vehicle's cache. That cache is filled from the car or from a linked data
+  source, and until now nothing in Home Assistant could put a number into it —
+  so a reading from an OBD dongle, a separate tyre-pressure sensor, or a
+  correction for something the car reports wrongly had nowhere to live. Call
+  `evconduit.push_vehicle_state` with `fields`, a mapping of dotted cache paths
+  to values: `chargeState.batteryLevel: 72`, `location.latitude: -33.8688`,
+  `abrp_extra.tire_pressure_fl: 240`.
+* The paths are the backend's own cache paths, the same ones the status payload
+  uses. An unknown or read-only path fails the whole call and writes nothing,
+  so a mapping with one bad key in it stores none of the good ones — the log
+  names every path that was sent, because the mistake is in the mapping and
+  retrying it unchanged will never succeed.
+* `observed_at` is optional and takes an ISO 8601 timestamp, for backfilling a
+  reading taken earlier; leave it out to store the values as of now.
+* Uses the same per-vehicle dispatch as the other services: with one car
+  configured there is nothing to specify, and `vehicle_id` picks one when
+  several are. Requires a backend that serves
+  `POST /api/ha/vehicle/{vehicle_id}/state`; without it the service is still
+  registered and reports the failure in the log.
+* `fields` is accepted as JSON text as well as a mapping, and the text form is
+  the one to use from an automation. Home Assistant renders a templated value in
+  `data:` to a string, so a dict built in a template arrives as its repr — with
+  its numbers and booleans no longer numbers and booleans, which the backend
+  rejects. End the template with `| tojson` and pass the result.
+
+### Fixed
+
+* **Every service in this integration was missing its description and its
+  fields in the Home Assistant UI.** `services.yaml` failed to parse as a whole,
+  because the `post_charging_session` latitude and longitude selectors asked for
+  `step: 0.000001` and Home Assistant rejects a step below `0.001`. One invalid
+  selector took the rest of the file with it. Both now use `step: any`, which is
+  what a coordinate wants anyway — the step only controls slider granularity,
+  never the value you type.
+
+---
+
 ## \[1.14.0] - 2026-09-17
 
 ### Added

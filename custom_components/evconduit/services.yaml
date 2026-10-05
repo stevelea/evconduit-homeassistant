@@ -96,7 +96,13 @@ post_charging_session:
         number:
           min: -90
           max: 90
-          step: 0.000001
+          # `any`, not a step: Home Assistant rejects a `step` below 1e-3
+          # (helpers/selector.py), and one that fine is wanted here — a
+          # coordinate needs six decimals to name a parking space. A rejected
+          # `step` does not just degrade this field: the whole services.yaml
+          # fails to parse, so every service in this integration loses its
+          # description in the UI.
+          step: any
     longitude:
       name: Longitude
       description: Charging location longitude. Used for OCM station lookup.
@@ -105,7 +111,7 @@ post_charging_session:
         number:
           min: -180
           max: 180
-          step: 0.000001
+          step: any
     odometer_km:
       name: Odometer (km)
       description: Vehicle odometer reading at end of session.
@@ -115,3 +121,22 @@ post_charging_session:
           min: 0
           max: 1000000
           unit_of_measurement: km
+
+push_vehicle_state:
+  name: Push Vehicle State
+  description: Write values straight into the EVConduit vehicle cache. Keys are dotted cache paths such as chargeState.batteryLevel, location.latitude or abrp_extra.tire_pressure_fl, and each value is stored at that path. A path the backend does not recognise, or will not let you write, fails the whole call and nothing is written.
+  fields:
+    fields:
+      name: Fields
+      description: 'Mapping of dotted vehicle-cache paths to the value to store at each one, for example {"chargeState.batteryLevel": 72, "location.latitude": -33.8688}.'
+      required: true
+      example: '{"chargeState.batteryLevel": 72, "location.latitude": -33.8688}'
+      selector:
+        object:
+    observed_at:
+      name: Observed At
+      description: ISO 8601 timestamp of when the readings were taken. Use it to backfill a reading from earlier; leave it out to store the values as of now.
+      required: false
+      example: "2026-10-05T08:30:00+11:00"
+      selector:
+        text:
